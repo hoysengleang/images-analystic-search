@@ -1,0 +1,1 @@
+"""OpenVisionSearch application package."""

@@ -1,0 +1,69 @@
+from datetime import datetime
+from typing import Any, Optional
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+class CollectionModelConfig(BaseModel):
+    provider: str = Field(..., min_length=1, examples=["openclip"])
+    name: str = Field(..., min_length=1, examples=["ViT-B-32"])
+    pretrained: str = Field(..., min_length=1, examples=["laion2b_s34b_b79k"])
+    vector_size: int = Field(..., ge=1, examples=[512])
+    distance: str = Field(default="cosine", min_length=1, examples=["cosine"])
+
+    @field_validator("provider", "distance", mode="before")
+    @classmethod
+    def normalize_lowercase_fields(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip().lower()
+        return value
+
+    @field_validator("name", "pretrained", mode="before")
+    @classmethod
+    def strip_string_fields(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+    @field_validator("distance")
+    @classmethod
+    def validate_distance(cls, value: str) -> str:
+        allowed_distances = {"cosine", "dot", "euclid", "manhattan"}
+        if value not in allowed_distances:
+            raise ValueError(
+                "distance must be one of: cosine, dot, euclid, manhattan"
+            )
+        return value
+
+
+class CollectionCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=128, examples=["products"])
+    model: Optional[CollectionModelConfig] = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def normalize_name(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+
+class CollectionResponse(BaseModel):
+    name: str
+    model: CollectionModelConfig
+    points_count: int = Field(default=0, ge=0)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CollectionStatsResponse(BaseModel):
+    name: str
+    points_count: int = Field(default=0, ge=0)
+    vector_size: int = Field(..., ge=1)
+    distance: str
+    model: CollectionModelConfig
+
+    model_config = ConfigDict(from_attributes=True)
