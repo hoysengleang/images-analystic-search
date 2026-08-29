@@ -5,12 +5,20 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from app.api.routes.collections import get_indexing_service
+from app.core.config import Settings
+from app.dependencies import get_indexing_service
 from app.embedding.base import EmbeddingProvider
 from app.main import app
 from app.schemas.collection import CollectionModelConfig
 from app.services.collection_metadata_service import CollectionMetadataService
 from app.services.indexing_service import IndexingService
+
+
+class FakeImageLoader:
+    """Uploads and folder indexing read bytes directly, never via the loader."""
+
+    def load_from_source(self, source):
+        raise AssertionError("image loader should not be used on this path")
 
 
 class FakeEmbeddingProvider(EmbeddingProvider):
@@ -28,7 +36,9 @@ class FakeEmbeddingProvider(EmbeddingProvider):
 
 
 class FakeEmbeddingManager:
-    def get_provider(self, *, provider_name, model_name, model_pretrained, vector_size):
+    def get_provider(
+        self, *, provider_name, model_name, model_pretrained, vector_size, **options
+    ):
         return FakeEmbeddingProvider()
 
 
@@ -36,9 +46,19 @@ class FakeVectorService:
     def __init__(self) -> None:
         self.upserts = []
 
-    def upsert_image(self, **kwargs):
-        self.upserts.append(kwargs)
-        return kwargs["image_id"]
+    def upsert_images(self, *, collection_name, records, embedding):
+        for record in records:
+            self.upserts.append(
+                {
+                    "collection_name": collection_name,
+                    "image_id": record.image_id,
+                    "vector": record.vector,
+                    "source": record.source,
+                    "metadata": record.metadata,
+                    "embedding": embedding,
+                }
+            )
+        return [record.image_id for record in records]
 
 
 def make_image_bytes() -> bytes:
@@ -62,7 +82,9 @@ def make_indexing_service(tmp_path: Path):
     )
     vector_service = FakeVectorService()
     service = IndexingService(
+        settings=Settings(),
         metadata_service=metadata_service,
+        image_loader=FakeImageLoader(),
         embedding_manager=FakeEmbeddingManager(),
         vector_service=vector_service,
     )

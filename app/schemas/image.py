@@ -2,7 +2,6 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-
 SupportedImageSourceType = Literal["url", "path", "base64"]
 
 
@@ -31,5 +30,7 @@ class ImageSource(BaseModel):
         if self.type == "url" and not self.value.startswith(("http://", "https://")):
             raise ValueError("url image source value must start with http:// or https://")
         if self.type == "base64" and self.value.startswith("data:"):
-            raise ValueError("base64 image source value must not include a data URL prefix")
+            raise ValueError(
+                "base64 image source value must not include a data URL prefix"
+            )
         return self

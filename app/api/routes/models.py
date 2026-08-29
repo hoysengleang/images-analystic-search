@@ -1,7 +1,8 @@
-from pydantic import BaseModel
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 
-from app.embedding.manager import EmbeddingManager, get_embedding_manager
+from app.dependencies import get_embedding_manager
+from app.embedding.manager import EmbeddingManager
 
 router = APIRouter(tags=["models"])
 
@@ -11,6 +12,7 @@ class ModelMetadataResponse(BaseModel):
     model_name: str
     model_pretrained: str
     vector_size: int
+    supports_text: bool = False
     is_default: bool = False
 
 

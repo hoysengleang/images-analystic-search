@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from app.api.routes.collections import get_search_service
+from app.dependencies import get_search_service
 from app.main import app
 from app.schemas.search import SearchResponse, SearchResult
 
@@ -30,9 +30,7 @@ class FakeSearchService:
         ][: request.top_k]
 
         if request.min_score is not None:
-            results = [
-                result for result in results if result.score >= request.min_score
-            ]
+            results = [result for result in results if result.score >= request.min_score]
 
         return SearchResponse(
             collection_name=request.collection_name,

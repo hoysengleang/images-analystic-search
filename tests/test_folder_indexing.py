@@ -9,7 +9,19 @@ from app.core.errors import BadRequestError
 from app.embedding.base import EmbeddingProvider
 from app.schemas.collection import CollectionModelConfig
 from app.services.collection_metadata_service import CollectionMetadataService
+from app.services.image_loader import ImageLoader
 from app.services.indexing_service import IndexingService
+
+
+class FakeImageLoader:
+    def __init__(self, settings: Settings) -> None:
+        self.loader = ImageLoader(settings=settings)
+
+    def load_from_source(self, source):
+        raise AssertionError("image loader should not be used on this path")
+
+    def load_from_path(self, path):
+        return self.loader.load_from_path(path)
 
 
 class FakeEmbeddingProvider(EmbeddingProvider):
@@ -27,7 +39,9 @@ class FakeEmbeddingProvider(EmbeddingProvider):
 
 
 class FakeEmbeddingManager:
-    def get_provider(self, *, provider_name, model_name, model_pretrained, vector_size):
+    def get_provider(
+        self, *, provider_name, model_name, model_pretrained, vector_size, **options
+    ):
         return FakeEmbeddingProvider()
 
 
@@ -35,9 +49,19 @@ class FakeVectorService:
     def __init__(self) -> None:
         self.upserts = []
 
-    def upsert_image(self, **kwargs):
-        self.upserts.append(kwargs)
-        return kwargs["image_id"]
+    def upsert_images(self, *, collection_name, records, embedding):
+        for record in records:
+            self.upserts.append(
+                {
+                    "collection_name": collection_name,
+                    "image_id": record.image_id,
+                    "vector": record.vector,
+                    "source": record.source,
+                    "metadata": record.metadata,
+                    "embedding": embedding,
+                }
+            )
+        return [record.image_id for record in records]
 
 
 def make_image_bytes() -> bytes:
@@ -60,9 +84,11 @@ def make_service(tmp_path: Path, allowed_root: Path):
         ),
     )
     vector_service = FakeVectorService()
+    settings = Settings(allowed_image_root=allowed_root)
     service = IndexingService(
-        settings=Settings(allowed_image_root=allowed_root),
+        settings=settings,
         metadata_service=metadata_service,
+        image_loader=FakeImageLoader(settings),
         embedding_manager=FakeEmbeddingManager(),
         vector_service=vector_service,
     )
@@ -157,3 +183,25 @@ def test_broken_image_counts_as_failure(tmp_path: Path) -> None:
     assert response.errors[0]["id"] == "broken"
     assert response.errors[0]["code"] == "INVALID_IMAGE"
     assert [upsert["image_id"] for upsert in vector_service.upserts] == ["a"]
+
+
+def test_folder_file_symlink_cannot_escape_allowed_root(tmp_path: Path) -> None:
+    allowed_root = tmp_path / "images"
+    folder = allowed_root / "products"
+    folder.mkdir(parents=True)
+    outside_image = tmp_path / "secret.png"
+    outside_image.write_bytes(make_image_bytes())
+    (folder / "escape.png").symlink_to(outside_image)
+    service, vector_service = make_service(tmp_path, allowed_root)
+
+    response = service.index_folder(
+        collection_name="products",
+        folder_path=str(folder),
+        recursive=True,
+        metadata={},
+    )
+
+    assert response.indexed_count == 0
+    assert response.failed_count == 1
+    assert response.errors[0]["code"] == "IMAGE_PATH_NOT_ALLOWED"
+    assert vector_service.upserts == []

@@ -4,11 +4,23 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.schemas.image import ImageSource
 
+#: Every query image costs a model forward pass, so cap one request.
+MAX_QUERY_IMAGES = 20
+
+QUERY_DESCRIPTION = (
+    "Plain-language description of what to find, for example "
+    '"red running shoe with a white sole".'
+)
+
+TOP_K_DESCRIPTION = (
+    "Number of results to return. Defaults to DEFAULT_TOP_K and is capped by MAX_TOP_K."
+)
+
 
 class SearchRequest(BaseModel):
     collection_name: str = Field(..., min_length=1, max_length=128, examples=["products"])
     source: ImageSource
-    top_k: int = Field(default=10, ge=1, le=100)
+    top_k: Optional[int] = Field(default=None, ge=1, description=TOP_K_DESCRIPTION)
     min_score: Optional[float] = Field(default=None)
     filters: dict[str, Any] = Field(default_factory=dict)
 
@@ -22,15 +34,77 @@ class SearchRequest(BaseModel):
 
 class SearchImagesRequest(BaseModel):
     source: ImageSource
-    top_k: int = Field(default=10, ge=1, le=100)
+    top_k: Optional[int] = Field(default=None, ge=1, description=TOP_K_DESCRIPTION)
     min_score: Optional[float] = Field(default=None)
     filters: dict[str, Any] = Field(default_factory=dict)
 
 
+class TextSearchRequest(BaseModel):
+    query: str = Field(
+        ...,
+        min_length=1,
+        max_length=512,
+        description=QUERY_DESCRIPTION,
+        examples=["red running shoe"],
+    )
+    top_k: Optional[int] = Field(default=None, ge=1, description=TOP_K_DESCRIPTION)
+    min_score: Optional[float] = Field(
+        default=None,
+        description=(
+            "Text-to-image scores are much lower than image-to-image scores. "
+            "Start around 0.2 rather than reusing an image threshold."
+        ),
+    )
+    filters: dict = Field(default_factory=dict)
+
+    @field_validator("query", mode="before")
+    @classmethod
+    def strip_query(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+
+class HybridSearchRequest(BaseModel):
+    """An image query nudged by words, for example "this shoe, but blue"."""
+
+    source: ImageSource
+    query: str = Field(
+        ...,
+        min_length=1,
+        max_length=512,
+        description=QUERY_DESCRIPTION,
+        examples=["but in blue"],
+    )
+    text_weight: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "How much the text pulls the query away from the image. "
+            "0.0 is a pure image search, 1.0 is a pure text search."
+        ),
+    )
+    top_k: Optional[int] = Field(default=None, ge=1, description=TOP_K_DESCRIPTION)
+    min_score: Optional[float] = Field(default=None)
+    filters: dict = Field(default_factory=dict)
+
+    @field_validator("query", mode="before")
+    @classmethod
+    def strip_query(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+
 class BatchSearchImagesRequest(BaseModel):
-    sources: list[ImageSource] = Field(..., min_length=1)
+    sources: list[ImageSource] = Field(
+        ...,
+        min_length=1,
+        max_length=MAX_QUERY_IMAGES,
+    )
     mode: Literal["average", "separate"] = "average"
-    top_k: int = Field(default=10, ge=1, le=100)
+    top_k: Optional[int] = Field(default=None, ge=1, description=TOP_K_DESCRIPTION)
     min_score: Optional[float] = Field(default=None)
     filters: dict[str, Any] = Field(default_factory=dict)
 

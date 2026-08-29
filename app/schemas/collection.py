@@ -10,8 +10,30 @@ class CollectionModelConfig(BaseModel):
     pretrained: str = Field(..., min_length=1, examples=["laion2b_s34b_b79k"])
     vector_size: int = Field(..., ge=1, examples=[512])
     distance: str = Field(default="cosine", min_length=1, examples=["cosine"])
+    framing: str = Field(
+        default="pad",
+        examples=["pad"],
+        description=(
+            "How a non-square image is fitted to the model input. Pinned per "
+            "collection: vectors framed differently are not comparable."
+        ),
+    )
+    views: int = Field(
+        default=1,
+        ge=1,
+        le=3,
+        description="Views averaged per image. Also pinned per collection.",
+    )
 
-    @field_validator("provider", "distance", mode="before")
+    @field_validator("framing")
+    @classmethod
+    def validate_framing(cls, value: str) -> str:
+        allowed = {"crop", "pad"}
+        if value not in allowed:
+            raise ValueError(f"framing must be one of: {', '.join(sorted(allowed))}")
+        return value
+
+    @field_validator("provider", "distance", "framing", mode="before")
     @classmethod
     def normalize_lowercase_fields(cls, value: object) -> object:
         if isinstance(value, str):
@@ -30,9 +52,7 @@ class CollectionModelConfig(BaseModel):
     def validate_distance(cls, value: str) -> str:
         allowed_distances = {"cosine", "dot", "euclid", "manhattan"}
         if value not in allowed_distances:
-            raise ValueError(
-                "distance must be one of: cosine, dot, euclid, manhattan"
-            )
+            raise ValueError("distance must be one of: cosine, dot, euclid, manhattan")
         return value
 
 

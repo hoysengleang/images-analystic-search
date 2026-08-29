@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from app.api.routes.collections import get_indexing_service
+from app.dependencies import get_indexing_service
 from app.main import app
 from app.schemas.index import IndexResponse
 

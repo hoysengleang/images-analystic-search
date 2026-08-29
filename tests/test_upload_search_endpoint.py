@@ -4,13 +4,21 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from app.api.routes.collections import get_search_service
+from app.core.config import Settings
+from app.dependencies import get_search_service
 from app.embedding.base import EmbeddingProvider
 from app.main import app
 from app.schemas.collection import CollectionModelConfig
 from app.schemas.search import SearchResult
 from app.services.collection_metadata_service import CollectionMetadataService
 from app.services.search_service import SearchService
+
+
+class FakeImageLoader:
+    """Uploads and folder indexing read bytes directly, never via the loader."""
+
+    def load_from_source(self, source):
+        raise AssertionError("image loader should not be used on this path")
 
 
 class FakeEmbeddingProvider(EmbeddingProvider):
@@ -28,7 +36,9 @@ class FakeEmbeddingProvider(EmbeddingProvider):
 
 
 class FakeEmbeddingManager:
-    def get_provider(self, *, provider_name, model_name, model_pretrained, vector_size):
+    def get_provider(
+        self, *, provider_name, model_name, model_pretrained, vector_size, **options
+    ):
         return FakeEmbeddingProvider()
 
 
@@ -81,7 +91,9 @@ def make_search_service(tmp_path: Path):
     )
     vector_service = FakeVectorService()
     service = SearchService(
+        settings=Settings(),
         metadata_service=metadata_service,
+        image_loader=FakeImageLoader(),
         embedding_manager=FakeEmbeddingManager(),
         vector_service=vector_service,
     )

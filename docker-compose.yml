@@ -1,3 +1,5 @@
+# Values below fall back to sane defaults, so `docker compose up` works with
+# no .env file. Compose reads .env automatically when you do create one.
 services:
   api:
     build: .
@@ -5,30 +7,45 @@ services:
     environment:
       APP_NAME: ${APP_NAME:-OpenVisionSearch}
       APP_ENV: ${APP_ENV:-development}
-      APP_HOST: ${APP_HOST:-0.0.0.0}
-      APP_PORT: ${APP_PORT:-8000}
-      APP_VERSION: ${APP_VERSION:-0.1.0}
       API_PREFIX: ${API_PREFIX:-}
+      API_KEY: ${API_KEY:-}
+      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-["*"]}
+
       QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
       QDRANT_API_KEY: ${QDRANT_API_KEY:-}
+
+      # Both live on the mounted ./data volume so they survive a restart.
+      ALLOWED_IMAGE_ROOT: /data/images
+      COLLECTION_METADATA_PATH: /data/collections.json
+
       DEFAULT_EMBEDDING_PROVIDER: ${DEFAULT_EMBEDDING_PROVIDER:-openclip}
       DEFAULT_MODEL_NAME: ${DEFAULT_MODEL_NAME:-ViT-B-32}
       DEFAULT_MODEL_PRETRAINED: ${DEFAULT_MODEL_PRETRAINED:-laion2b_s34b_b79k}
       DEFAULT_VECTOR_SIZE: ${DEFAULT_VECTOR_SIZE:-512}
-      ALLOWED_IMAGE_ROOT: ${ALLOWED_IMAGE_ROOT:-/data/images}
-      UPLOAD_DIR: ${UPLOAD_DIR:-/tmp/openvisionsearch/uploads}
+      EMBED_BATCH_SIZE: ${EMBED_BATCH_SIZE:-16}
+      IMAGE_FRAMING: ${IMAGE_FRAMING:-pad}
+      EMBED_VIEWS: ${EMBED_VIEWS:-1}
+      WARMUP_MODEL_ON_STARTUP: ${WARMUP_MODEL_ON_STARTUP:-true}
+
       MAX_IMAGE_SIZE_MB: ${MAX_IMAGE_SIZE_MB:-20}
-      ALLOWED_IMAGE_TYPES: ${ALLOWED_IMAGE_TYPES:-["image/jpeg","image/png","image/webp"]}
+      MAX_REQUEST_BODY_MB: ${MAX_REQUEST_BODY_MB:-25}
       URL_DOWNLOAD_TIMEOUT_SECONDS: ${URL_DOWNLOAD_TIMEOUT_SECONDS:-10}
+      MAX_REDIRECTS: ${MAX_REDIRECTS:-3}
       ALLOW_PRIVATE_URLS: ${ALLOW_PRIVATE_URLS:-false}
-      STORE_ORIGINAL_IMAGES: ${STORE_ORIGINAL_IMAGES:-false}
-      STORAGE_DRIVER: ${STORAGE_DRIVER:-none}
+
       DEFAULT_TOP_K: ${DEFAULT_TOP_K:-10}
       MAX_TOP_K: ${MAX_TOP_K:-100}
     ports:
-      - "${APP_PORT:-8000}:${APP_PORT:-8000}"
+      - "${APP_PORT:-8000}:8000"
+    volumes:
+      # Put the images you want to index under ./data/images on the host.
+      - ./data:/data
+      # Keeps downloaded model weights across rebuilds.
+      - model_cache:/opt/model-cache
     depends_on:
-      - qdrant
+      qdrant:
+        condition: service_healthy
+    restart: unless-stopped
 
   qdrant:
     image: qdrant/qdrant:latest
@@ -38,6 +55,13 @@ services:
       - "6334:6334"
     volumes:
       - qdrant_storage:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
 
 volumes:
   qdrant_storage:
+  model_cache:

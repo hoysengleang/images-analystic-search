@@ -38,7 +38,9 @@ class FakeEmbeddingManager:
     def __init__(self) -> None:
         self.provider = FakeEmbeddingProvider()
 
-    def get_provider(self, *, provider_name, model_name, model_pretrained, vector_size):
+    def get_provider(
+        self, *, provider_name, model_name, model_pretrained, vector_size, **options
+    ):
         return self.provider
 
 
@@ -89,7 +91,9 @@ def make_sources() -> list[ImageSource]:
     ]
 
 
-def test_average_mode_searches_once_with_normalized_average_vector(tmp_path: Path) -> None:
+def test_average_mode_searches_once_with_normalized_average_vector(
+    tmp_path: Path,
+) -> None:
     service, vector_service = make_service(tmp_path)
 
     response = service.search_batch(

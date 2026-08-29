@@ -19,9 +19,18 @@ class IndexImageItem(BaseModel):
         return value
 
 
+#: Bounds the work one request can queue. Bigger catalogues should arrive as
+#: several requests; folder indexing has no such cap because it streams.
+MAX_IMAGES_PER_REQUEST = 500
+
+
 class IndexRequest(BaseModel):
     collection_name: str = Field(..., min_length=1, max_length=128, examples=["products"])
-    images: list[IndexImageItem] = Field(..., min_length=1)
+    images: list[IndexImageItem] = Field(
+        ...,
+        min_length=1,
+        max_length=MAX_IMAGES_PER_REQUEST,
+    )
 
     @field_validator("collection_name", mode="before")
     @classmethod
@@ -40,7 +49,11 @@ class IndexResponse(BaseModel):
 
 
 class IndexImagesRequest(BaseModel):
-    images: list[IndexImageItem] = Field(..., min_length=1)
+    images: list[IndexImageItem] = Field(
+        ...,
+        min_length=1,
+        max_length=MAX_IMAGES_PER_REQUEST,
+    )
 
 
 class IndexFolderRequest(BaseModel):

@@ -15,10 +15,13 @@ from app.services.search_service import SearchService
 class FakeImageLoader:
     def __init__(self) -> None:
         self.sources = []
+        self.images = []
 
     def load_from_source(self, source):
         self.sources.append(source)
-        return Image.new("RGB", (2, 2))
+        image = Image.new("RGB", (2, 2))
+        self.images.append(image)
+        return image
 
 
 class FakeEmbeddingProvider(EmbeddingProvider):
@@ -40,13 +43,16 @@ class FakeEmbeddingManager:
         self.calls = []
         self.provider = FakeEmbeddingProvider()
 
-    def get_provider(self, *, provider_name, model_name, model_pretrained, vector_size):
+    def get_provider(
+        self, *, provider_name, model_name, model_pretrained, vector_size, **options
+    ):
         self.calls.append(
             {
                 "provider_name": provider_name,
                 "model_name": model_name,
                 "model_pretrained": model_pretrained,
                 "vector_size": vector_size,
+                **options,
             }
         )
         return self.provider
@@ -131,6 +137,8 @@ def test_can_search_by_supported_source_types(
     assert response.results[0].source_value == "https://example.com/a.jpg"
     assert response.results[0].metadata == {"name": "Blue Shoe"}
     assert image_loader.sources[0].type == source_type
+    with pytest.raises(ValueError):
+        image_loader.images[0].getpixel((0, 0))
     assert embedding_manager.calls[0]["provider_name"] == "openclip"
     assert vector_service.calls[0]["top_k"] == 5
 

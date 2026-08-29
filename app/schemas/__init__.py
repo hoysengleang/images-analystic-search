@@ -8,7 +8,11 @@ from app.schemas.collection import (
 )
 from app.schemas.common import ErrorResponse
 from app.schemas.image import ImageSource
-from app.schemas.image_record import ImageDeleteResponse, ImageRecordResponse
+from app.schemas.image_record import (
+    ImageDeleteResponse,
+    ImageListResponse,
+    ImageRecordResponse,
+)
 from app.schemas.index import (
     IndexFolderRequest,
     IndexImageItem,
@@ -20,10 +24,12 @@ from app.schemas.search import (
     BatchSearchGroup,
     BatchSearchImagesRequest,
     BatchSearchResponse,
+    HybridSearchRequest,
     SearchImagesRequest,
     SearchRequest,
     SearchResponse,
     SearchResult,
+    TextSearchRequest,
 )
 
 __all__ = [
@@ -34,6 +40,7 @@ __all__ = [
     "ErrorResponse",
     "ImageSource",
     "ImageDeleteResponse",
+    "ImageListResponse",
     "ImageRecordResponse",
     "IndexFolderRequest",
     "IndexImageItem",
@@ -45,6 +52,8 @@ __all__ = [
     "BatchSearchGroup",
     "BatchSearchImagesRequest",
     "BatchSearchResponse",
+    "HybridSearchRequest",
     "SearchResponse",
     "SearchResult",
+    "TextSearchRequest",
 ]

@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
-from app.api.routes.collections import get_vector_service
 from app.core.errors import ResourceNotFoundError
+from app.dependencies import get_vector_service
 from app.main import app
 from app.schemas.image_record import ImageDeleteResponse, ImageRecordResponse
 
