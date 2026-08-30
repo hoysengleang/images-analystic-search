@@ -132,13 +132,6 @@ class ProductRepository(TenantScopedRepository):
             (product_id, self.tenant_id),
         )
 
-    def _require_same_tenant(self, tenant_id: str) -> None:
-        if tenant_id != self.tenant_id:
-            raise ValueError(
-                f"Refusing to write tenant {tenant_id!r} data through a "
-                f"repository scoped to {self.tenant_id!r}"
-            )
-
     def _to_product(self, row: sqlite3.Row) -> Product:
         return Product(
             id=row["id"],
@@ -258,13 +251,6 @@ class ProductImageRepository(TenantScopedRepository):
             "DELETE FROM product_images WHERE tenant_id = ? AND product_id = ?",
             (self.tenant_id, product_id),
         )
-
-    def _require_same_tenant(self, tenant_id: str) -> None:
-        if tenant_id != self.tenant_id:
-            raise ValueError(
-                f"Refusing to write tenant {tenant_id!r} data through a "
-                f"repository scoped to {self.tenant_id!r}"
-            )
 
     def _to_image(self, row: sqlite3.Row) -> ProductImage:
         return ProductImage(

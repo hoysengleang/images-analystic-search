@@ -2,7 +2,7 @@
 
 > **In transition.** The project is moving from an image-similarity API to the
 > multi-tenant product search platform described in
-> `VISUAL_PRODUCT_SEARCH_SPEC.md`. Milestone 0 (the storage, tenancy, and
+> [`VISUAL_PRODUCT_SEARCH_SPEC.md`](VISUAL_PRODUCT_SEARCH_SPEC.md). Milestone 0 (the storage, tenancy, and
 > engine foundation) is built and tested but **not yet wired into the running
 > API** — the live endpoints are still the image-level `/collections` routes,
 > which the `/v1` product API replaces in Milestone 1. See
@@ -22,6 +22,13 @@ Tenant scope is bound when a repository is *constructed*, not passed per call,
 so a query cannot be written without it. That is the mechanism behind the
 specification's first priority; see
 [ADR 0003](adr/0003-tenant-scope-in-repository-construction.md).
+
+The native engine performs exact cosine search over vectors durably stored in
+SQLite. Its in-memory cache is partitioned by `(tenant_id, model_version)` and
+is rebuilt lazily after startup or a write. It supports strict category, stock,
+price, brand, and nested product-attribute filters; unsupported filters fail
+instead of being silently ignored. The live image-level API remains on Qdrant
+until the product-level `/v1` service is wired in Milestone 1.
 
 ## Request flow (current image API)
 
@@ -71,7 +78,9 @@ Per-image loading keeps a single broken file from failing the whole request. Bat
 
 Qdrant stores vectors; it does not track which embedding model produced them. Vectors from different models are not comparable, so the collection→model mapping is kept in a small JSON registry at `COLLECTION_METADATA_PATH` and consulted on every index and search call.
 
-In Docker this file lives on the mounted `./data` volume so it survives restarts. If you run several API replicas, put it on shared storage.
+In Docker this file lives on the `app_state` named volume so it survives
+restarts without giving the service write access to merchant images. If you run
+several API replicas, put it on shared storage.
 
 ## Adding an embedding model
 

@@ -72,6 +72,6 @@ Use your own primary key as the image `id`. That way a search result maps straig
 | Data | Location | Survives a container restart |
 | --- | --- | --- |
 | Vectors and payloads | Qdrant (`qdrant_storage` volume) | Yes |
-| Collection → model registry | `COLLECTION_METADATA_PATH` on the `./data` mount | Yes |
+| Collection → model registry | `COLLECTION_METADATA_PATH` on the `app_state` volume | Yes |
 | Model weights | `model_cache` volume | Yes |
 | Decoded images | Memory only, for the length of one request | No, by design |

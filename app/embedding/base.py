@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from app.core.errors import BadRequestError
 
@@ -19,7 +19,7 @@ class EmbeddingModelMetadata:
     vector_size: int
     supports_text: bool = False
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
@@ -62,10 +62,10 @@ class EmbeddingProvider(ABC):
         )
 
     @abstractmethod
-    def embed_image(self, image: Image.Image) -> list:
+    def embed_image(self, image: Image.Image) -> list[float]:
         """Return an embedding vector for a single image."""
 
-    def embed_images(self, images: Sequence) -> list:
+    def embed_images(self, images: Sequence[Image.Image]) -> list[list[float]]:
         """Return one embedding vector per image, in order.
 
         The default walks the images one by one. Providers backed by a tensor
@@ -73,7 +73,7 @@ class EmbeddingProvider(ABC):
         """
         return [self.embed_image(image) for image in images]
 
-    def embed_text(self, text: str) -> list:
+    def embed_text(self, text: str) -> list[float]:
         """Return an embedding vector for a text query.
 
         Only meaningful when the provider's text and image encoders share one
@@ -86,7 +86,7 @@ class EmbeddingProvider(ABC):
             details={"provider": self.provider_name},
         )
 
-    def embed_texts(self, texts: Sequence) -> list:
+    def embed_texts(self, texts: Sequence[str]) -> list[list[float]]:
         """Return one embedding vector per text, in order."""
         return [self.embed_text(text) for text in texts]
 

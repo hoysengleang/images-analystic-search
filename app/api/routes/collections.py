@@ -1,21 +1,17 @@
 """Collection lifecycle endpoints."""
 
 from fastapi import APIRouter, Depends, status
-from pydantic import BaseModel
 
 from app.dependencies import get_collection_service
 from app.schemas.collection import (
     CollectionCreateRequest,
     CollectionResponse,
+    CollectionsListResponse,
     CollectionStatsResponse,
 )
 from app.services.collection_service import CollectionService
 
 router = APIRouter(prefix="/collections", tags=["collections"])
-
-
-class CollectionsListResponse(BaseModel):
-    collections: list[CollectionResponse]
 
 
 @router.post(

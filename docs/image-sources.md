@@ -44,8 +44,11 @@ Mount your images with the volume already in `docker-compose.yml`:
 
 ```yaml
 volumes:
-  - ./data:/data      # ./data/images on the host → /data/images in the container
+  - ./data/images:/data/images:ro
 ```
+
+The read-only mount is deliberate: indexing needs to read merchant originals,
+but the service never needs to modify or delete them.
 
 ## Folder
 

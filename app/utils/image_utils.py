@@ -214,8 +214,14 @@ def _load_rgb_image(image_bytes: bytes) -> Image.Image:
     try:
         with Image.open(BytesIO(image_bytes)) as opened_image:
             upright_image = ImageOps.exif_transpose(opened_image)
-            loaded_image = upright_image.convert("RGB")
-            loaded_image.load()
+            try:
+                loaded_image = upright_image.convert("RGB")
+                loaded_image.load()
+            finally:
+                # exif_transpose commonly returns a copy. Close that temporary
+                # promptly; only the independent RGB result leaves this function.
+                if upright_image is not opened_image:
+                    upright_image.close()
     except (UnidentifiedImageError, OSError, ValueError) as exc:
         raise InvalidImageError(message="Invalid or broken image file") from exc
 

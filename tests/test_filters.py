@@ -159,6 +159,7 @@ def test_combined_filters_are_all_applied(catalogue) -> None:
         {"tags": [1, "two"]},
         {"price": {}},
         {"nested": {"deep": {"gte": 1}}},
+        {"category": None},
     ],
 )
 def test_filters_the_server_cannot_apply_are_refused(catalogue, filters) -> None:

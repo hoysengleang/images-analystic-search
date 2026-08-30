@@ -1,9 +1,35 @@
 from inspect import signature
-from typing import Optional
+from typing import Optional, Protocol
 
 from app.core.config import Settings
 from app.embedding.base import EmbeddingModelMetadata, EmbeddingProvider
 from app.embedding.registry import EmbeddingProviderRegistry
+
+
+class EmbeddingConfiguration(Protocol):
+    """Fields needed to rebuild the embedding space of stored vectors."""
+
+    embedding_provider: str
+    embedding_model: str
+    embedding_pretrained: str
+    vector_size: int
+    framing: str
+    views: int
+
+
+def get_configured_provider(
+    manager: "EmbeddingManager",
+    configuration: EmbeddingConfiguration,
+) -> EmbeddingProvider:
+    """Resolve a provider from a persisted embedding configuration."""
+    return manager.get_provider(
+        provider_name=configuration.embedding_provider,
+        model_name=configuration.embedding_model,
+        model_pretrained=configuration.embedding_pretrained,
+        vector_size=configuration.vector_size,
+        framing=configuration.framing,
+        views=configuration.views,
+    )
 
 
 class EmbeddingManager:
@@ -15,7 +41,10 @@ class EmbeddingManager:
     ) -> None:
         self.settings = settings
         self.registry = registry
-        self._provider_cache: dict[tuple[str, str, str, int], EmbeddingProvider] = {}
+        self._provider_cache: dict[
+            tuple[str, str, str, int, Optional[str], Optional[int]],
+            EmbeddingProvider,
+        ] = {}
 
     def get_default_provider(self) -> EmbeddingProvider:
         return self.get_provider(

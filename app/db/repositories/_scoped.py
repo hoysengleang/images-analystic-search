@@ -19,3 +19,11 @@ class TenantScopedRepository:
 
         self.connection = connection
         self.tenant_id = tenant_id.strip()
+
+    def _require_same_tenant(self, tenant_id: str) -> None:
+        """Refuse writes for data owned by another tenant."""
+        if tenant_id != self.tenant_id:
+            raise ValueError(
+                f"Refusing to write tenant {tenant_id!r} data through a "
+                f"repository scoped to {self.tenant_id!r}"
+            )

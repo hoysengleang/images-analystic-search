@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
 from app.core.config import Settings
 from app.core.errors import BadRequestError
 from app.embedding.base import EmbeddingProvider
-from app.embedding.manager import EmbeddingManager
+from app.embedding.manager import EmbeddingManager, get_configured_provider
 from app.schemas.image import ImageSource
 from app.schemas.search import (
     BatchSearchGroup,
@@ -13,7 +13,10 @@ from app.schemas.search import (
     SearchRequest,
     SearchResponse,
 )
-from app.services.collection_metadata_service import CollectionMetadataService
+from app.services.collection_metadata_service import (
+    CollectionMetadata,
+    CollectionMetadataService,
+)
 from app.services.image_loader import ImageLoader
 from app.services.vector_service import VectorService
 from app.utils.image_utils import validate_and_load_image
@@ -36,21 +39,16 @@ class SearchService:
         self.vector_service = vector_service
 
     def search(self, request: SearchRequest) -> SearchResponse:
-        resolved_top_k = self._resolve_top_k(request.top_k)
-        collection_metadata = self.metadata_service.get(request.collection_name)
-        embedding_provider = self._provider_for(collection_metadata)
+        collection_metadata, embedding_provider = self._collection_context(
+            request.collection_name
+        )
         vector = self._embed_source(embedding_provider, request.source)
-        results = self.vector_service.search(
-            collection_name=collection_metadata.collection_name,
+        return self._search_response(
+            collection_metadata=collection_metadata,
             vector=vector,
-            top_k=resolved_top_k,
+            top_k=request.top_k,
             filters=request.filters,
             min_score=request.min_score,
-        )
-        return SearchResponse(
-            collection_name=collection_metadata.collection_name,
-            top_k=resolved_top_k,
-            results=results,
         )
 
     def search_upload(
@@ -62,10 +60,9 @@ class SearchService:
         top_k: Optional[int],
         min_score: Optional[float] = None,
     ) -> SearchResponse:
-        resolved_top_k = self._resolve_top_k(top_k)
-
-        collection_metadata = self.metadata_service.get(collection_name)
-        embedding_provider = self._provider_for(collection_metadata)
+        collection_metadata, embedding_provider = self._collection_context(
+            collection_name
+        )
 
         validated_image = validate_and_load_image(
             image_bytes,
@@ -78,17 +75,11 @@ class SearchService:
             vector = embedding_provider.embed_image(validated_image.image)
         finally:
             validated_image.image.close()
-        results = self.vector_service.search(
-            collection_name=collection_metadata.collection_name,
+        return self._search_response(
+            collection_metadata=collection_metadata,
             vector=vector,
-            top_k=resolved_top_k,
+            top_k=top_k,
             min_score=min_score,
-        )
-
-        return SearchResponse(
-            collection_name=collection_metadata.collection_name,
-            top_k=resolved_top_k,
-            results=results,
         )
 
     def search_text(
@@ -98,26 +89,20 @@ class SearchService:
         query: str,
         top_k: Optional[int],
         min_score: Optional[float] = None,
-        filters: Optional[dict] = None,
+        filters: Optional[dict[str, Any]] = None,
     ) -> SearchResponse:
         """Search stored images with words instead of a query image."""
-        resolved_top_k = self._resolve_top_k(top_k)
-        collection_metadata = self.metadata_service.get(collection_name)
-        embedding_provider = self._provider_for(collection_metadata)
-
-        vector = embedding_provider.embed_text(query)
-        results = self.vector_service.search(
-            collection_name=collection_metadata.collection_name,
-            vector=vector,
-            top_k=resolved_top_k,
-            filters=filters or {},
-            min_score=min_score,
+        collection_metadata, embedding_provider = self._collection_context(
+            collection_name
         )
 
-        return SearchResponse(
-            collection_name=collection_metadata.collection_name,
-            top_k=resolved_top_k,
-            results=results,
+        vector = embedding_provider.embed_text(query)
+        return self._search_response(
+            collection_metadata=collection_metadata,
+            vector=vector,
+            top_k=top_k,
+            filters=filters,
+            min_score=min_score,
         )
 
     def search_hybrid(
@@ -129,32 +114,26 @@ class SearchService:
         text_weight: float,
         top_k: Optional[int],
         min_score: Optional[float] = None,
-        filters: Optional[dict] = None,
+        filters: Optional[dict[str, Any]] = None,
     ) -> SearchResponse:
         """Search with an image steered by a text description.
 
         Both encoders write into one vector space, so a weighted blend of the
         two query vectors expresses "this image, but ..." in a single search.
         """
-        resolved_top_k = self._resolve_top_k(top_k)
-        collection_metadata = self.metadata_service.get(collection_name)
-        embedding_provider = self._provider_for(collection_metadata)
+        collection_metadata, embedding_provider = self._collection_context(
+            collection_name
+        )
 
         image_vector = self._embed_source(embedding_provider, source)
         text_vector = embedding_provider.embed_text(query)
 
-        results = self.vector_service.search(
-            collection_name=collection_metadata.collection_name,
+        return self._search_response(
+            collection_metadata=collection_metadata,
             vector=self._blend_vectors(image_vector, text_vector, text_weight),
-            top_k=resolved_top_k,
-            filters=filters or {},
+            top_k=top_k,
+            filters=filters,
             min_score=min_score,
-        )
-
-        return SearchResponse(
-            collection_name=collection_metadata.collection_name,
-            top_k=resolved_top_k,
-            results=results,
         )
 
     def search_batch(
@@ -169,8 +148,9 @@ class SearchService:
     ) -> BatchSearchResponse:
         resolved_top_k = self._resolve_top_k(top_k)
 
-        collection_metadata = self.metadata_service.get(collection_name)
-        embedding_provider = self._provider_for(collection_metadata)
+        collection_metadata, embedding_provider = self._collection_context(
+            collection_name
+        )
         vectors = [self._embed_source(embedding_provider, source) for source in sources]
 
         if mode == "average":
@@ -212,22 +192,44 @@ class SearchService:
             groups=groups,
         )
 
-    def _provider_for(self, collection_metadata) -> EmbeddingProvider:
-        """Build the provider this collection was created with."""
-        return self.embedding_manager.get_provider(
-            provider_name=collection_metadata.embedding_provider,
-            model_name=collection_metadata.embedding_model,
-            model_pretrained=collection_metadata.embedding_pretrained,
-            vector_size=collection_metadata.vector_size,
-            framing=collection_metadata.framing,
-            views=collection_metadata.views,
+    def _collection_context(
+        self,
+        collection_name: str,
+    ) -> tuple[CollectionMetadata, EmbeddingProvider]:
+        collection_metadata = self.metadata_service.get(collection_name)
+        return (
+            collection_metadata,
+            get_configured_provider(self.embedding_manager, collection_metadata),
+        )
+
+    def _search_response(
+        self,
+        *,
+        collection_metadata: CollectionMetadata,
+        vector: list[float],
+        top_k: Optional[int],
+        min_score: Optional[float] = None,
+        filters: Optional[dict[str, Any]] = None,
+    ) -> SearchResponse:
+        resolved_top_k = self._resolve_top_k(top_k)
+        results = self.vector_service.search(
+            collection_name=collection_metadata.collection_name,
+            vector=vector,
+            top_k=resolved_top_k,
+            filters=filters or {},
+            min_score=min_score,
+        )
+        return SearchResponse(
+            collection_name=collection_metadata.collection_name,
+            top_k=resolved_top_k,
+            results=results,
         )
 
     def _embed_source(
         self,
         embedding_provider: EmbeddingProvider,
         source: ImageSource,
-    ) -> list:
+    ) -> list[float]:
         image = self.image_loader.load_from_source(source)
         try:
             return embedding_provider.embed_image(image)
@@ -252,10 +254,10 @@ class SearchService:
 
     def _blend_vectors(
         self,
-        image_vector: list,
-        text_vector: list,
+        image_vector: list[float],
+        text_vector: list[float],
         text_weight: float,
-    ) -> list:
+    ) -> list[float]:
         image_weight = 1.0 - text_weight
         return self._normalize_vector(
             [

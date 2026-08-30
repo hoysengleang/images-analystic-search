@@ -1,0 +1,31 @@
+name: Question or support request
+description: Ask about setup, configuration, or usage
+title: "[Question]: "
+labels: [question]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: What are you trying to do?
+    validations:
+      required: true
+  - type: textarea
+    id: attempted
+    attributes:
+      label: What have you tried?
+      description: Include minimal commands, sanitized configuration, and the documentation you followed.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+    validations:
+      required: true
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy check
+      options:
+        - label: I removed credentials, signed URLs, private catalogue data, and customer images.
+          required: true

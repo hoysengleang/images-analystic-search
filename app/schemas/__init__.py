@@ -4,6 +4,7 @@ from app.schemas.collection import (
     CollectionCreateRequest,
     CollectionModelConfig,
     CollectionResponse,
+    CollectionsListResponse,
     CollectionStatsResponse,
 )
 from app.schemas.common import ErrorResponse
@@ -31,9 +32,11 @@ from app.schemas.search import (
     SearchResult,
     TextSearchRequest,
 )
+from app.schemas.system import HealthResponse, ModelMetadataResponse, ModelsResponse
 
 __all__ = [
     "CollectionCreateRequest",
+    "CollectionsListResponse",
     "CollectionModelConfig",
     "CollectionResponse",
     "CollectionStatsResponse",
@@ -47,6 +50,9 @@ __all__ = [
     "IndexImagesRequest",
     "IndexRequest",
     "IndexResponse",
+    "HealthResponse",
+    "ModelMetadataResponse",
+    "ModelsResponse",
     "SearchRequest",
     "SearchImagesRequest",
     "BatchSearchGroup",

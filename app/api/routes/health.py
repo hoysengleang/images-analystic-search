@@ -1,22 +1,15 @@
 """Liveness endpoint, plus an opt-in Qdrant connectivity probe."""
 
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
 
 from app.core.config import Settings, get_settings
 from app.dependencies import get_qdrant_client
 from app.providers.qdrant_provider import check_qdrant_connection
+from app.schemas.system import HealthResponse
 
 router = APIRouter(tags=["health"])
-
-
-class HealthResponse(BaseModel):
-    app_name: str
-    status: str
-    search_engine: str
-    qdrant: Optional[dict] = None
 
 
 @router.get(

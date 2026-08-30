@@ -1,6 +1,6 @@
 You are working on a free, open-source, self-hosted visual **product** search platform.
 
-`VISUAL_PRODUCT_SEARCH_SPEC.md` (in the user's Codex outputs directory) is the source of truth. Developers connect a merchant catalogue, the platform indexes product images and metadata, and a shopper's photo returns visually similar **products** — not image rows.
+[`docs/VISUAL_PRODUCT_SEARCH_SPEC.md`](docs/VISUAL_PRODUCT_SEARCH_SPEC.md) is the source of truth. Developers connect a merchant catalogue, the platform indexes product images and metadata, and a shopper's photo returns visually similar **products** — not image rows.
 
 The repository is mid-transition from its earlier image-similarity API. Milestone 0 (storage, tenancy, engine contract) is built; the live API is still the older `/collections` image routes until the `/v1` product API replaces them.
 
@@ -38,4 +38,5 @@ app/
 - Keep endpoints language-independent and easy to call from any backend.
 - Prefer a simple MVP over over-engineering.
 - Record decisions and deviations as ADRs in `docs/adr/`.
-- Keep `python -m pytest` and `ruff check app tests examples` green.
+- Keep `python -m pytest`, `ruff check app tests examples benchmarks`, and
+  `ruff format --check app tests examples benchmarks` green.

@@ -3,6 +3,11 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.core.constants import (
+    SUPPORTED_DISTANCE_METRICS,
+    SUPPORTED_IMAGE_FRAMINGS,
+)
+
 
 class CollectionModelConfig(BaseModel):
     provider: str = Field(..., min_length=1, examples=["openclip"])
@@ -28,9 +33,10 @@ class CollectionModelConfig(BaseModel):
     @field_validator("framing")
     @classmethod
     def validate_framing(cls, value: str) -> str:
-        allowed = {"crop", "pad"}
-        if value not in allowed:
-            raise ValueError(f"framing must be one of: {', '.join(sorted(allowed))}")
+        if value not in SUPPORTED_IMAGE_FRAMINGS:
+            raise ValueError(
+                f"framing must be one of: {', '.join(sorted(SUPPORTED_IMAGE_FRAMINGS))}"
+            )
         return value
 
     @field_validator("provider", "distance", "framing", mode="before")
@@ -50,9 +56,11 @@ class CollectionModelConfig(BaseModel):
     @field_validator("distance")
     @classmethod
     def validate_distance(cls, value: str) -> str:
-        allowed_distances = {"cosine", "dot", "euclid", "manhattan"}
-        if value not in allowed_distances:
-            raise ValueError("distance must be one of: cosine, dot, euclid, manhattan")
+        if value not in SUPPORTED_DISTANCE_METRICS:
+            raise ValueError(
+                "distance must be one of: "
+                f"{', '.join(sorted(SUPPORTED_DISTANCE_METRICS))}"
+            )
         return value
 
 
@@ -87,3 +95,7 @@ class CollectionStatsResponse(BaseModel):
     model: CollectionModelConfig
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class CollectionsListResponse(BaseModel):
+    collections: list[CollectionResponse] = Field(default_factory=list)

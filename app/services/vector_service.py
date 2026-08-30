@@ -1,36 +1,20 @@
 from __future__ import annotations
 
-import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Optional, Protocol
+from typing import Any, Optional, Protocol
 from uuid import NAMESPACE_URL, uuid5
 
-from app.core.errors import (
-    BadRequestError,
-    ResourceNotFoundError,
-    ServiceUnavailableError,
-)
+from app.core.errors import ResourceNotFoundError, ServiceUnavailableError
 from app.embedding.base import EmbeddingModelMetadata
+from app.providers.qdrant_filters import build_qdrant_filter
 from app.schemas.image_record import (
     ImageDeleteResponse,
     ImageListResponse,
     ImageRecordResponse,
 )
 from app.schemas.search import SearchResult
-
-if TYPE_CHECKING:
-    from qdrant_client.http import models as qdrant_models
-
-
-#: Bounds accepted by a range filter, matching Qdrant's own operator names.
-RANGE_OPERATORS = frozenset({"gt", "gte", "lt", "lte"})
-
-#: Metadata keys Qdrant can address as a payload path. A key outside this set
-#: makes Qdrant reject the whole query, which is a client mistake and must not
-#: be reported as a backend outage.
-FILTER_KEY_PATTERN = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_-]*(\.[A-Za-z0-9_-]+)*$")
 
 
 class VectorSource(Protocol):
@@ -43,9 +27,9 @@ class VectorRecord:
     """One image ready to be written to Qdrant."""
 
     image_id: str
-    vector: list
+    vector: list[float]
     source: VectorSource
-    metadata: dict
+    metadata: dict[str, Any]
 
 
 class VectorService:
@@ -59,9 +43,9 @@ class VectorService:
         *,
         collection_name: str,
         image_id: str,
-        vector: list,
+        vector: list[float],
         source: VectorSource,
-        metadata: Optional[dict] = None,
+        metadata: Optional[dict[str, Any]] = None,
         embedding: EmbeddingModelMetadata,
     ) -> str:
         point_ids = self.upsert_images(
@@ -82,9 +66,9 @@ class VectorService:
         self,
         *,
         collection_name: str,
-        records: Sequence,
+        records: Sequence[VectorRecord],
         embedding: EmbeddingModelMetadata,
-    ) -> list:
+    ) -> list[str]:
         from qdrant_client.http import models as qdrant_models
 
         if not records:
@@ -131,7 +115,7 @@ class VectorService:
         record: VectorRecord,
         embedding: EmbeddingModelMetadata,
         created_at: str,
-    ) -> dict:
+    ) -> dict[str, Any]:
         return {
             "image_id": record.image_id,
             "source_type": record.source.type,
@@ -156,7 +140,7 @@ class VectorService:
         filters: Optional[dict[str, Any]] = None,
         min_score: Optional[float] = None,
     ) -> list[SearchResult]:
-        query_filter = self._build_filter(filters or {})
+        query_filter = build_qdrant_filter(filters or {})
 
         try:
             response = self.qdrant_client.query_points(
@@ -268,7 +252,7 @@ class VectorService:
         collection_name: str,
         filters: Optional[dict[str, Any]] = None,
     ) -> int:
-        count_filter = self._build_filter(filters or {})
+        count_filter = build_qdrant_filter(filters or {})
 
         try:
             result = self.qdrant_client.count(
@@ -284,97 +268,6 @@ class VectorService:
             ) from exc
 
         return int(getattr(result, "count", result))
-
-    def _build_filter(
-        self,
-        filters: dict[str, Any],
-    ) -> Optional[qdrant_models.Filter]:
-        from qdrant_client.http import models as qdrant_models
-
-        if not filters:
-            return None
-
-        conditions = [
-            qdrant_models.FieldCondition(
-                key=f"metadata.{self._validated_key(key)}",
-                **self._condition_for(key, value),
-            )
-            for key, value in filters.items()
-        ]
-
-        return qdrant_models.Filter(must=conditions)
-
-    def _validated_key(self, key: str) -> str:
-        if not FILTER_KEY_PATTERN.match(key):
-            raise self._unsupported_filter(
-                key,
-                None,
-                "a filter field must be letters, digits, underscore, or hyphen, "
-                "optionally dotted for nested fields",
-            )
-        return key
-
-    def _condition_for(self, key: str, value: Any) -> dict[str, Any]:
-        from qdrant_client.http import models as qdrant_models
-
-        if isinstance(value, (bool, int, float, str)):
-            return {"match": qdrant_models.MatchValue(value=value)}
-
-        if isinstance(value, (list, tuple, set)):
-            return {"match": qdrant_models.MatchAny(any=self._match_any(key, value))}
-
-        if isinstance(value, dict):
-            return {"range": qdrant_models.Range(**self._range_bounds(key, value))}
-
-        raise self._unsupported_filter(
-            key,
-            value,
-        )
-
-    def _match_any(self, key: str, value: Any) -> list:
-        values = list(value)
-        all_strings = values and all(isinstance(item, str) for item in values)
-        all_integers = values and all(
-            isinstance(item, int) and not isinstance(item, bool) for item in values
-        )
-
-        if not (all_strings or all_integers):
-            raise self._unsupported_filter(
-                key,
-                value,
-                "a list filter must hold only strings or only integers",
-            )
-
-        return values
-
-    def _range_bounds(self, key: str, value: dict[str, Any]) -> dict[str, Any]:
-        unknown = set(value) - RANGE_OPERATORS
-        if unknown or not value:
-            raise self._unsupported_filter(
-                key,
-                value,
-                f"range filters accept only {', '.join(sorted(RANGE_OPERATORS))}",
-            )
-
-        if not all(
-            isinstance(bound, (int, float)) and not isinstance(bound, bool)
-            for bound in value.values()
-        ):
-            raise self._unsupported_filter(key, value, "range bounds must be numbers")
-
-        return dict(value)
-
-    def _unsupported_filter(
-        self,
-        key: str,
-        value: Any,
-        reason: str,
-    ) -> BadRequestError:
-        return BadRequestError(
-            message=f"Unsupported filter for '{key}': {reason}",
-            code="UNSUPPORTED_FILTER",
-            details={"field": key, "value": value},
-        )
 
     def _search_result_from_point(self, point: Any) -> SearchResult:
         payload = point.payload or {}

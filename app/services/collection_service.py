@@ -70,14 +70,13 @@ class CollectionService:
     def get_collection_stats(self, collection_name: str) -> CollectionStatsResponse:
         metadata = self.metadata_service.get(collection_name)
         points_count = self._get_qdrant_points_count(metadata.collection_name)
-        model = self._model_config_from_metadata(metadata)
 
         return CollectionStatsResponse(
             name=metadata.collection_name,
             points_count=points_count,
             vector_size=metadata.vector_size,
             distance=metadata.distance,
-            model=model,
+            model=metadata.to_model_config(),
         )
 
     def delete_collection(self, collection_name: str) -> CollectionResponse:
@@ -219,22 +218,8 @@ class CollectionService:
     ) -> CollectionResponse:
         return CollectionResponse(
             name=metadata.collection_name,
-            model=self._model_config_from_metadata(metadata),
+            model=metadata.to_model_config(),
             points_count=points_count,
             metadata={},
             created_at=metadata.created_at,
-        )
-
-    def _model_config_from_metadata(
-        self,
-        metadata: CollectionMetadata,
-    ) -> CollectionModelConfig:
-        return CollectionModelConfig(
-            provider=metadata.embedding_provider,
-            name=metadata.embedding_model,
-            pretrained=metadata.embedding_pretrained,
-            vector_size=metadata.vector_size,
-            distance=metadata.distance,
-            framing=metadata.framing,
-            views=metadata.views,
         )

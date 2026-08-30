@@ -36,7 +36,11 @@ def index_images(
 )
 async def index_uploaded_image(
     collection_name: str,
-    id: str = Form(..., description="Stable image id used for later lookups."),
+    image_id: str = Form(
+        ...,
+        alias="id",
+        description="Stable image id used for later lookups.",
+    ),
     image: UploadFile = File(...),
     metadata: Optional[str] = Form(
         default=None,
@@ -51,9 +55,9 @@ async def index_uploaded_image(
     )
     return service.index_upload(
         collection_name=collection_name,
-        image_id=id,
+        image_id=image_id,
         image_bytes=image_bytes,
-        filename=image.filename or id,
+        filename=image.filename or image_id,
         content_type=image.content_type,
         metadata=parse_metadata_form_field(metadata),
     )

@@ -55,7 +55,7 @@ class TextSearchRequest(BaseModel):
             "Start around 0.2 rather than reusing an image threshold."
         ),
     )
-    filters: dict = Field(default_factory=dict)
+    filters: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("query", mode="before")
     @classmethod
@@ -87,7 +87,7 @@ class HybridSearchRequest(BaseModel):
     )
     top_k: Optional[int] = Field(default=None, ge=1, description=TOP_K_DESCRIPTION)
     min_score: Optional[float] = Field(default=None)
-    filters: dict = Field(default_factory=dict)
+    filters: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("query", mode="before")
     @classmethod

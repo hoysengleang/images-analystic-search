@@ -128,12 +128,14 @@ class VectorRepository(TenantScopedRepository):
             ).fetchone()
         return int(row["total"])
 
-    def _require_same_tenant(self, tenant_id: str) -> None:
-        if tenant_id != self.tenant_id:
-            raise ValueError(
-                f"Refusing to write tenant {tenant_id!r} data through a "
-                f"repository scoped to {self.tenant_id!r}"
-            )
+    def dimensions_for_model(self, model_version: str) -> set[int]:
+        """Return stored dimensions without loading vector blobs."""
+        rows = self.connection.execute(
+            "SELECT DISTINCT dimension FROM vectors"
+            " WHERE tenant_id = ? AND model_version = ?",
+            (self.tenant_id, model_version),
+        ).fetchall()
+        return {int(row["dimension"]) for row in rows}
 
     def _to_record(self, row: sqlite3.Row) -> VectorRecord:
         return VectorRecord(

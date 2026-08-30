@@ -1,24 +1,10 @@
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
 
 from app.dependencies import get_embedding_manager
 from app.embedding.manager import EmbeddingManager
+from app.schemas.system import ModelMetadataResponse, ModelsResponse
 
 router = APIRouter(tags=["models"])
-
-
-class ModelMetadataResponse(BaseModel):
-    provider: str
-    model_name: str
-    model_pretrained: str
-    vector_size: int
-    supports_text: bool = False
-    is_default: bool = False
-
-
-class ModelsResponse(BaseModel):
-    models: list[ModelMetadataResponse]
-    default_model: ModelMetadataResponse
 
 
 @router.get("/models", response_model=ModelsResponse, summary="List embedding models")

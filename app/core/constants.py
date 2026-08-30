@@ -1,4 +1,4 @@
-"""Shared constants for image handling.
+"""Shared constants for API validation and image handling.
 
 Kept in one place so the image utilities, the settings, and the loaders all
 agree on which formats the service accepts.
@@ -7,6 +7,14 @@ agree on which formats the service accepts.
 from __future__ import annotations
 
 from typing import Final
+
+#: Distance metrics supported consistently by settings, schemas, and backends.
+SUPPORTED_DISTANCE_METRICS: Final[frozenset[str]] = frozenset(
+    {"cosine", "dot", "euclid", "manhattan"}
+)
+
+#: Image framing modes that define distinct embedding spaces.
+SUPPORTED_IMAGE_FRAMINGS: Final[frozenset[str]] = frozenset({"crop", "pad"})
 
 #: Supported upload MIME types mapped to their canonical file extension.
 MIME_TYPE_TO_EXTENSION: Final[dict[str, str]] = {

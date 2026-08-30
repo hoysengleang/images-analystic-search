@@ -5,9 +5,11 @@ from typing import Optional
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from app.core.constants import MIME_TYPE_TO_EXTENSION
-
-ALLOWED_DISTANCES = {"cosine", "dot", "euclid", "manhattan"}
+from app.core.constants import (
+    MIME_TYPE_TO_EXTENSION,
+    SUPPORTED_DISTANCE_METRICS,
+    SUPPORTED_IMAGE_FRAMINGS,
+)
 
 
 class Settings(BaseSettings):
@@ -151,10 +153,10 @@ class Settings(BaseSettings):
     @field_validator("image_framing")
     @classmethod
     def validate_image_framing(cls, value: str) -> str:
-        supported = {"crop", "pad"}
-        if value not in supported:
+        if value not in SUPPORTED_IMAGE_FRAMINGS:
             raise ValueError(
-                f"IMAGE_FRAMING must be one of: {', '.join(sorted(supported))}"
+                "IMAGE_FRAMING must be one of: "
+                f"{', '.join(sorted(SUPPORTED_IMAGE_FRAMINGS))}"
             )
         return value
 
@@ -213,9 +215,10 @@ class Settings(BaseSettings):
     @field_validator("default_distance")
     @classmethod
     def validate_default_distance(cls, value: str) -> str:
-        if value not in ALLOWED_DISTANCES:
+        if value not in SUPPORTED_DISTANCE_METRICS:
             raise ValueError(
-                f"DEFAULT_DISTANCE must be one of: {', '.join(sorted(ALLOWED_DISTANCES))}"
+                "DEFAULT_DISTANCE must be one of: "
+                f"{', '.join(sorted(SUPPORTED_DISTANCE_METRICS))}"
             )
         return value
 

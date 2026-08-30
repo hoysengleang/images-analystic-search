@@ -1,6 +1,15 @@
 # OpenVisionSearch
 
-OpenVisionSearch is a free, open-source, self-hosted **visual search API**. Index images from URLs, uploads, local paths, folders, base64 payloads, or S3/R2 signed URLs — then search for visually similar images over plain HTTP from any language.
+[![CI](https://github.com/hoysengleang/images-analystic-search/actions/workflows/ci.yml/badge.svg)](https://github.com/hoysengleang/images-analystic-search/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/hoysengleang/images-analystic-search/actions/workflows/codeql.yml/badge.svg)](https://github.com/hoysengleang/images-analystic-search/actions/workflows/codeql.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python 3.9–3.12](https://img.shields.io/badge/python-3.9%E2%80%933.12-blue.svg)](pyproject.toml)
+
+OpenVisionSearch is a free, open-source, self-hosted **visual product search
+platform**. Its current, pre-1.0 image-level API indexes images from URLs,
+uploads, local paths, folders, base64 payloads, or S3/R2 signed URLs and searches
+them over plain HTTP from any language. The product-level `/v1` API is the next
+milestone.
 
 Search by **image**, by **text**, or by both at once. It stores **vectors and metadata, not your original images**.
 
@@ -13,8 +22,10 @@ image → OpenCLIP encoder → vector → Qdrant nearest-neighbour search → si
 > **product** search platform — one result per product rather than per image,
 > catalogue connectors, and a native engine that removes the Qdrant
 > requirement. The storage and tenancy foundation for that is built and tested
-> but not yet wired to the API. See the [roadmap](docs/roadmap.md) and
-> [decision records](docs/adr/).
+> but not yet wired to the API. The
+> [product specification](docs/VISUAL_PRODUCT_SEARCH_SPEC.md) is the source of
+> truth; see the [roadmap](docs/roadmap.md) and [decision records](docs/adr/) for
+> implementation status and deviations.
 
 ## Quickstart
 
@@ -179,7 +190,7 @@ Vectors from different models are not comparable, so a collection is pinned to t
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 uvicorn app.main:app --reload
 ```
 
@@ -201,12 +212,16 @@ Two things to keep in mind: a Recall@1 figure is only meaningful alongside the c
 
 ## Documentation
 
+- [Product specification — source of truth](docs/VISUAL_PRODUCT_SEARCH_SPEC.md)
 - [Architecture](docs/architecture.md)
 - [API reference](docs/api-reference.md)
 - [Image sources](docs/image-sources.md)
 - [Storage strategy](docs/storage-strategy.md)
+- [Security model](docs/security.md)
 - [Deployment](docs/deployment.md)
 - [Roadmap](docs/roadmap.md)
+- [Contributing](CONTRIBUTING.md), [support](SUPPORT.md), and
+  [security reporting](SECURITY.md)
 
 ## Model licensing and attribution
 

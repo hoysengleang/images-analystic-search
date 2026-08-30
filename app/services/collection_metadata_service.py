@@ -6,9 +6,10 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import RLock
-from typing import Optional
+from typing import Any, Optional
 
 from app.core.errors import ConflictError, ResourceNotFoundError
+from app.embedding.base import EmbeddingModelMetadata
 from app.schemas.collection import CollectionModelConfig
 
 try:  # pragma: no cover - platform dependent
@@ -31,8 +32,29 @@ class CollectionMetadata:
     framing: str = "pad"
     views: int = 1
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+    def to_embedding_metadata(self) -> EmbeddingModelMetadata:
+        """Return the model identity persisted alongside every vector."""
+        return EmbeddingModelMetadata(
+            provider=self.embedding_provider,
+            model_name=self.embedding_model,
+            model_pretrained=self.embedding_pretrained,
+            vector_size=self.vector_size,
+        )
+
+    def to_model_config(self) -> CollectionModelConfig:
+        """Return the public model configuration represented by this record."""
+        return CollectionModelConfig(
+            provider=self.embedding_provider,
+            name=self.embedding_model,
+            pretrained=self.embedding_pretrained,
+            vector_size=self.vector_size,
+            distance=self.distance,
+            framing=self.framing,
+            views=self.views,
+        )
 
 
 class CollectionMetadataService:
@@ -47,7 +69,7 @@ class CollectionMetadataService:
     def __init__(self, metadata_path: Path = DEFAULT_METADATA_PATH) -> None:
         self.metadata_path = metadata_path
         self._thread_lock = RLock()
-        self._cache: Optional[dict] = None
+        self._cache: Optional[dict[str, dict[str, Any]]] = None
         self._cache_stamp: Optional[tuple] = None
 
     def save(
@@ -97,7 +119,7 @@ class CollectionMetadataService:
                 details={"collection_name": normalized_name},
             ) from exc
 
-    def list(self) -> list:
+    def list(self) -> list[CollectionMetadata]:
         collections = self._read_all()
         return [
             self._metadata_from_dict(collections[name]) for name in sorted(collections)
@@ -145,7 +167,7 @@ class CollectionMetadataService:
             return None
         return (stat_result.st_mtime_ns, stat_result.st_size)
 
-    def _read_all(self, *, use_cache: bool = True) -> dict:
+    def _read_all(self, *, use_cache: bool = True) -> dict[str, dict[str, Any]]:
         stamp = self._file_stamp()
 
         if use_cache and self._cache is not None and stamp == self._cache_stamp:
@@ -164,7 +186,7 @@ class CollectionMetadataService:
         self._cache_stamp = stamp
         return dict(data)
 
-    def _write_all(self, collections: dict) -> None:
+    def _write_all(self, collections: dict[str, dict[str, Any]]) -> None:
         self.metadata_path.parent.mkdir(parents=True, exist_ok=True)
         temp_path = self.metadata_path.with_suffix(f"{self.metadata_path.suffix}.tmp")
 
@@ -176,7 +198,7 @@ class CollectionMetadataService:
         self._cache = collections
         self._cache_stamp = self._file_stamp()
 
-    def _metadata_from_dict(self, data: dict) -> CollectionMetadata:
+    def _metadata_from_dict(self, data: dict[str, Any]) -> CollectionMetadata:
         return CollectionMetadata(
             collection_name=str(data["collection_name"]),
             embedding_provider=str(data["embedding_provider"]),

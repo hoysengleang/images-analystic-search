@@ -30,9 +30,63 @@ SHAPES = ("circle", "square", "triangle", "ring", "bars", "cross")
 GOLDEN_ANGLE = 137.508
 
 
-def _rgb(hue_degrees: float, saturation: float, value: float) -> tuple:
+def _rgb(
+    hue_degrees: float,
+    saturation: float,
+    value: float,
+) -> tuple[int, int, int]:
     red, green, blue = colorsys.hsv_to_rgb((hue_degrees % 360) / 360, saturation, value)
     return (int(red * 255), int(green * 255), int(blue * 255))
+
+
+def _draw_shape(
+    draw: ImageDraw.ImageDraw,
+    *,
+    shape: str,
+    box: tuple[int, int, int, int],
+    colour: tuple[int, int, int],
+    size: int,
+    inset: int,
+    seed: int,
+) -> None:
+    if shape == "circle":
+        draw.ellipse(box, fill=colour)
+    elif shape == "square":
+        draw.rectangle(box, fill=colour)
+    elif shape == "triangle":
+        draw.polygon(
+            [(size // 2, inset), (inset, size - inset), (size - inset, size - inset)],
+            fill=colour,
+        )
+    elif shape == "ring":
+        draw.ellipse(box, outline=colour, width=12 + (seed % 5) * 4)
+    elif shape == "bars":
+        bar_count = 3 + seed % 4
+        span = (size - 2 * inset) // bar_count
+        for index in range(bar_count):
+            top = inset + index * span
+            draw.rectangle((inset, top, size - inset, top + span // 2), fill=colour)
+    else:
+        mid, arm = size // 2, 10 + (seed % 5) * 4
+        draw.rectangle((mid - arm, inset, mid + arm, size - inset), fill=colour)
+        draw.rectangle((inset, mid - arm, size - inset, mid + arm), fill=colour)
+
+
+def _draw_accent_stripe(
+    draw: ImageDraw.ImageDraw,
+    *,
+    seed: int,
+    size: int,
+    colour: tuple[int, int, int],
+) -> None:
+    stripe = 18 + (seed % 4) * 6
+    boxes = (
+        (0, size - stripe, size, size),
+        (0, 0, size, stripe),
+        (0, 0, stripe, size),
+        (size - stripe, 0, size, size),
+    )
+    draw.rectangle(boxes[seed % len(boxes)], fill=colour)
 
 
 def synthetic_product(seed: int, size: int = 224) -> Image.Image:
@@ -56,38 +110,18 @@ def synthetic_product(seed: int, size: int = 224) -> Image.Image:
     inset = 24 + (seed % 9) * 4
     box = (inset, inset, size - inset, size - inset)
 
-    if shape == "circle":
-        draw.ellipse(box, fill=colour)
-    elif shape == "square":
-        draw.rectangle(box, fill=colour)
-    elif shape == "triangle":
-        draw.polygon(
-            [(size // 2, inset), (inset, size - inset), (size - inset, size - inset)],
-            fill=colour,
-        )
-    elif shape == "ring":
-        draw.ellipse(box, outline=colour, width=12 + (seed % 5) * 4)
-    elif shape == "bars":
-        bar_count = 3 + seed % 4
-        span = (size - 2 * inset) // bar_count
-        for index in range(bar_count):
-            top = inset + index * span
-            draw.rectangle((inset, top, size - inset, top + span // 2), fill=colour)
-    else:
-        mid, arm = size // 2, 10 + (seed % 5) * 4
-        draw.rectangle((mid - arm, inset, mid + arm, size - inset), fill=colour)
-        draw.rectangle((inset, mid - arm, size - inset, mid + arm), fill=colour)
+    _draw_shape(
+        draw,
+        shape=shape,
+        box=box,
+        colour=colour,
+        size=size,
+        inset=inset,
+        seed=seed,
+    )
 
     # A per-seed accent stripe in a varying corner adds another axis of identity.
-    stripe = 18 + (seed % 4) * 6
-    if seed % 4 == 0:
-        draw.rectangle((0, size - stripe, size, size), fill=accent)
-    elif seed % 4 == 1:
-        draw.rectangle((0, 0, size, stripe), fill=accent)
-    elif seed % 4 == 2:
-        draw.rectangle((0, 0, stripe, size), fill=accent)
-    else:
-        draw.rectangle((size - stripe, 0, size, size), fill=accent)
+    _draw_accent_stripe(draw, seed=seed, size=size, colour=accent)
 
     for _ in range(6 + seed % 5):
         x, y = rng.randint(0, size - 1), rng.randint(0, size - 1)
@@ -124,7 +158,18 @@ PROFILES = {
 }
 
 
-def as_shopper_photo(image: Image.Image, seed: int, profile: str = "typical"):
+def _replace_image(current: Image.Image, replacement: Image.Image) -> Image.Image:
+    """Replace an intermediate Pillow image without waiting for garbage collection."""
+    if replacement is not current:
+        current.close()
+    return replacement
+
+
+def as_shopper_photo(
+    image: Image.Image,
+    seed: int,
+    profile: str = "typical",
+) -> Image.Image:
     """Degrade a catalogue image the way a phone photo would differ."""
     settings = PROFILES[profile]
     rng = random.Random(seed * 977 + 13)
@@ -136,24 +181,56 @@ def as_shopper_photo(image: Image.Image, seed: int, profile: str = "typical"):
     top = rng.randint(0, max(0, height - crop_h))
     photo = image.crop((left, top, left + crop_w, top + crop_h))
 
-    photo = photo.rotate(
-        rng.uniform(-settings["rotate"], settings["rotate"]),
-        expand=True,
-        fillcolor=(240, 240, 240),
-    )
-    resize = rng.uniform(*settings["scale"])
-    photo = photo.resize((int(photo.width * resize), int(photo.height * resize)))
-    photo = ImageEnhance.Brightness(photo).enhance(rng.uniform(*settings["brightness"]))
-    photo = ImageEnhance.Color(photo).enhance(rng.uniform(*settings["colour"]))
-    if rng.random() < settings["blur_chance"]:
-        photo = photo.filter(ImageFilter.GaussianBlur(rng.uniform(*settings["blur"])))
+    try:
+        photo = _replace_image(
+            photo,
+            photo.rotate(
+                rng.uniform(-settings["rotate"], settings["rotate"]),
+                expand=True,
+                fillcolor=(240, 240, 240),
+            ),
+        )
+        resize = rng.uniform(*settings["scale"])
+        photo = _replace_image(
+            photo,
+            photo.resize((int(photo.width * resize), int(photo.height * resize))),
+        )
+        photo = _replace_image(
+            photo,
+            ImageEnhance.Brightness(photo).enhance(rng.uniform(*settings["brightness"])),
+        )
+        photo = _replace_image(
+            photo,
+            ImageEnhance.Color(photo).enhance(rng.uniform(*settings["colour"])),
+        )
+        if rng.random() < settings["blur_chance"]:
+            photo = _replace_image(
+                photo,
+                photo.filter(ImageFilter.GaussianBlur(rng.uniform(*settings["blur"]))),
+            )
 
-    buffer = BytesIO()
-    photo.convert("RGB").save(
-        buffer, format="JPEG", quality=rng.randint(*settings["quality"])
-    )
-    buffer.seek(0)
-    return Image.open(buffer).convert("RGB")
+        with BytesIO() as buffer:
+            rgb_photo = photo.convert("RGB")
+            try:
+                rgb_photo.save(
+                    buffer,
+                    format="JPEG",
+                    quality=rng.randint(*settings["quality"]),
+                )
+            finally:
+                if rgb_photo is not photo:
+                    rgb_photo.close()
+
+            buffer.seek(0)
+            with Image.open(buffer) as compressed:
+                return compressed.convert("RGB")
+    finally:
+        photo.close()
+
+
+def _load_rgb(path: Path) -> Image.Image:
+    with Image.open(path) as image:
+        return image.convert("RGB")
 
 
 def load_catalogue(image_dir: Path | None, count: int) -> list:
@@ -165,7 +242,7 @@ def load_catalogue(image_dir: Path | None, count: int) -> list:
         for path in image_dir.rglob("*")
         if path.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}
     )[:count]
-    return [(path.stem, Image.open(path).convert("RGB")) for path in paths]
+    return [(path.stem, _load_rgb(path)) for path in paths]
 
 
 def main() -> None:
@@ -222,9 +299,12 @@ def main() -> None:
         expected_id, source_image = catalogue[position]
         photo = as_shopper_photo(source_image, position, args.profile)
 
-        embed_start = time.perf_counter()
-        query_vector = provider.embed_image(photo)
-        embed_times.append((time.perf_counter() - embed_start) * 1000)
+        try:
+            embed_start = time.perf_counter()
+            query_vector = provider.embed_image(photo)
+            embed_times.append((time.perf_counter() - embed_start) * 1000)
+        finally:
+            photo.close()
 
         search_start = time.perf_counter()
         scored = sorted(
@@ -267,6 +347,9 @@ def main() -> None:
         f"  brute search p50: {statistics.median(search_times):.1f}ms "
         f"(pure python, over {len(vectors)} vectors)"
     )
+
+    for _, image in catalogue:
+        image.close()
 
 
 if __name__ == "__main__":

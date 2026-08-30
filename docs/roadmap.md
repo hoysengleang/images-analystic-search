@@ -15,7 +15,7 @@ Aligned to the milestones in `VISUAL_PRODUCT_SEARCH_SPEC.md`.
 ## Milestone 1 — end-to-end native search (next)
 
 - Local manifest connector reading JSON Lines plus a mounted image directory
-- Native exact-search engine, rebuilt from SQLite at startup
+- Native exact-search engine backed by SQLite (**engine complete; `/v1` wiring pending**)
 - Catalogue synchronisation with content hashes, deletes, and job progress
 - `/v1` product API on port 8080, replacing the image-level `/collections` routes
 - Product grouping so results are products, not duplicate image rows

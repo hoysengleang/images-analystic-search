@@ -10,11 +10,37 @@ curl http://localhost:8000/health
 
 The compose file gives you:
 
-- the API on port 8000 and Qdrant on 6333/6334,
-- `./data` mounted at `/data`, holding both your images (`./data/images`) and the collection registry,
+- the API on port 8000 and Qdrant reachable only on the internal Compose network,
+- `./data/images` mounted read-only for merchant originals,
+- an `app_state` volume for the writable collection registry,
 - a `model_cache` volume so model weights are downloaded once, not on every rebuild,
 - a `qdrant_storage` volume for the vectors,
 - the API waiting for Qdrant's healthcheck before starting.
+
+The API process runs as the unprivileged `openvisionsearch` user (UID 10001),
+with a read-only root filesystem, all Linux capabilities dropped, and a small
+temporary filesystem for uploaded request bodies. Qdrant is pinned to a specific
+release so an ordinary rebuild cannot silently change the database version.
+
+Qdrant's ports are intentionally not published on the host. If an operator
+needs direct local access for maintenance, use a Compose override that publishes
+port 6333 temporarily, then remove the override when finished.
+
+### Moving an existing registry
+
+Older Compose configurations stored the collection registry at
+`./data/collections.json`. Before removing an old deployment, preserve that file.
+After backing it up, initialize the new container and copy the registry into the
+named volume before startup:
+
+```bash
+docker compose create api
+docker compose cp ./data/collections.json api:/data/state/collections.json
+docker compose up -d
+```
+
+Verify `GET /collections` before retiring the old copy. The `app_state` volume
+then retains the existing collection-to-model mappings across container updates.
 
 ## First-request latency
 
@@ -49,7 +75,9 @@ Vectors are already shared, since every replica talks to the same Qdrant. The co
 ## Backups
 
 - **Qdrant** — snapshot the `qdrant_storage` volume, or use Qdrant's own snapshot API.
-- **Registry** — back up the JSON file at `COLLECTION_METADATA_PATH`. It is small and it is the only record of which model each collection uses.
+- **Registry** — back up the `app_state` volume containing the JSON file at
+  `COLLECTION_METADATA_PATH`. It is small and it is the only record of which
+  model each collection uses.
 
 Losing the registry does not lose your vectors, but nothing will know how to query them until it is restored.
 

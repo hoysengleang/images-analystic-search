@@ -5,7 +5,7 @@
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 python -m pytest
 ```
 
@@ -54,4 +54,14 @@ every endpoint in the order you would use them.
 
 ## Pull requests
 
-Keep them focused, explain what breaks if the change is wrong, and make sure `python -m pytest` is green.
+Keep them focused and explain what breaks if the change is wrong. Before opening
+a pull request, run:
+
+```bash
+ruff check app tests examples benchmarks
+ruff format --check app tests examples benchmarks
+python -m pytest
+```
+
+Never put vulnerability details in a public issue or pull request. Follow
+[`SECURITY.md`](SECURITY.md) for private reporting.

@@ -1,7 +1,11 @@
 ---
 name: open-vision-search-agent-skill
-description: Build and maintain OpenVisionSearch, a free open-source FastAPI image similarity search API using OpenCLIP and Qdrant. Use this skill when creating project files, APIs, docs, tests, or architecture for the OpenVisionSearch project.
+description: Legacy build guide for the earlier OpenVisionSearch image API.
 ---
+
+> **Legacy reference.** Do not use this document as the product specification.
+> New work follows
+> [`../VISUAL_PRODUCT_SEARCH_SPEC.md`](../VISUAL_PRODUCT_SEARCH_SPEC.md).
 
 # OpenVisionSearch Agent Skill
 

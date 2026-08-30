@@ -6,5 +6,12 @@ from app.search_engines.base import (
     VectorHit,
     VectorSearchRequest,
 )
+from app.search_engines.native import NativeSearchEngine
 
-__all__ = ["EngineHealth", "SearchEngine", "VectorHit", "VectorSearchRequest"]
+__all__ = [
+    "EngineHealth",
+    "NativeSearchEngine",
+    "SearchEngine",
+    "VectorHit",
+    "VectorSearchRequest",
+]

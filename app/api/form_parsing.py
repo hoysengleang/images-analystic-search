@@ -14,7 +14,7 @@ UPLOAD_CHUNK_SIZE = 64 * 1024
 
 async def read_upload_within_limit(upload: UploadFile, *, max_bytes: int) -> bytes:
     """Read an uploaded file, stopping as soon as it passes the size limit."""
-    chunks: list = []
+    chunks: list[bytes] = []
     total_bytes = 0
 
     while True:
@@ -35,7 +35,7 @@ async def read_upload_within_limit(upload: UploadFile, *, max_bytes: int) -> byt
     return b"".join(chunks)
 
 
-def parse_metadata_form_field(metadata: Optional[str]) -> dict:
+def parse_metadata_form_field(metadata: Optional[str]) -> dict[str, Any]:
     """Parse a JSON object sent as a multipart form field."""
     if metadata is None or not metadata.strip():
         return {}

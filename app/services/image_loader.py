@@ -173,7 +173,7 @@ class ImageLoader:
 
         return self._client
 
-    def _download(self, url: str) -> tuple:
+    def _download(self, url: str) -> tuple[bytes, str]:
         """Download an image, re-checking safety at every redirect hop.
 
         Redirects are followed by hand because letting the HTTP client follow
@@ -239,7 +239,7 @@ class ImageLoader:
 
     def _read_within_limit(self, response: httpx.Response, url: str) -> bytes:
         max_bytes = self.settings.max_image_size_bytes
-        chunks: list = []
+        chunks: list[bytes] = []
         downloaded_bytes = 0
 
         for chunk in response.iter_bytes(DOWNLOAD_CHUNK_SIZE):
