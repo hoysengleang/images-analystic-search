@@ -4,6 +4,49 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 SupportedImageSourceType = Literal["url", "path", "base64"]
 
+#: Boxes that touch an edge can land a hair over 1.0 in floating point, so the
+#: bounds check tolerates a rounding error rather than rejecting a full-width crop.
+BOUNDS_TOLERANCE = 1e-6
+
+
+class CropRectangle(BaseModel):
+    """A region of an image, in fractions of its width and height.
+
+    Normalized rather than pixel coordinates, so a caller can send the same box
+    for a thumbnail and for the full-resolution original. Matches the
+    ``crop_x`` / ``crop_y`` / ``crop_width`` / ``crop_height`` parameters in
+    section 14 of the specification.
+    """
+
+    x: float = Field(..., ge=0.0, le=1.0, examples=[0.31])
+    y: float = Field(..., ge=0.0, le=1.0, examples=[0.44])
+    width: float = Field(..., gt=0.0, le=1.0, examples=[0.22])
+    height: float = Field(..., gt=0.0, le=1.0, examples=[0.30])
+
+    @model_validator(mode="after")
+    def validate_within_bounds(self) -> "CropRectangle":
+        if self.x + self.width > 1.0 + BOUNDS_TOLERANCE:
+            raise ValueError("crop x + width must not exceed 1.0")
+        if self.y + self.height > 1.0 + BOUNDS_TOLERANCE:
+            raise ValueError("crop y + height must not exceed 1.0")
+        return self
+
+
+class DetectedRegion(BaseModel):
+    """One region a detector found, and how sure it was.
+
+    Returned to the caller as well as used internally, so a client can draw the
+    boxes the server actually searched instead of guessing why a result ranked
+    where it did.
+    """
+
+    box: CropRectangle
+    score: float = Field(..., ge=0.0, le=1.0)
+    label: Optional[str] = Field(
+        default=None,
+        description="The prompt this region matched, when the detector names one.",
+    )
+
 
 class ImageSource(BaseModel):
     type: SupportedImageSourceType = Field(..., examples=["url"])

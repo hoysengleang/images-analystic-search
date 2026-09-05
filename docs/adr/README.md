@@ -12,3 +12,4 @@ rewritten — supersede instead.
 | [0004](0004-api-key-storage-format.md) | API keys stored as SHA-256 hashes | Accepted |
 | [0005](0005-vector-persistence-format.md) | Vectors persisted as little-endian float32 blobs | Accepted |
 | [0006](0006-lazy-native-engine-cache.md) | Native vectors load lazily per tenant and model | Accepted |
+| [0007](0007-query-side-region-search.md) | Region search is query-side only, and detection ships switched off | Accepted |

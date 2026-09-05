@@ -33,8 +33,10 @@ class EmbeddingProvider(ABC):
     provider_name: ClassVar[str]
 
     #: True when the provider maps text into the same vector space as its
-    #: images, which is what makes text and hybrid search possible.
-    supports_text: ClassVar[bool] = False
+    #: images, which is what makes text and hybrid search possible. Normally a
+    #: fact about the class, but a provider whose text encoder is a separate,
+    #: optional artifact narrows it per instance.
+    supports_text: bool = False
 
     def __init__(
         self,

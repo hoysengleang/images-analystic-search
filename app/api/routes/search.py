@@ -2,7 +2,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 
-from app.api.form_parsing import read_upload_within_limit
+from app.api.form_parsing import parse_crop_form_fields, read_upload_within_limit
 from app.core.config import Settings, get_settings
 from app.dependencies import get_search_service
 from app.schemas.search import (
@@ -32,6 +32,9 @@ def search_images(
             top_k=request.top_k,
             min_score=request.min_score,
             filters=request.filters,
+            crop=request.crop,
+            detect=request.detect,
+            detect_prompt=request.detect_prompt,
         )
     )
 
@@ -73,6 +76,9 @@ def search_hybrid(
         top_k=request.top_k,
         min_score=request.min_score,
         filters=request.filters,
+        crop=request.crop,
+        detect=request.detect,
+        detect_prompt=request.detect_prompt,
     )
 
 
@@ -86,6 +92,14 @@ async def search_uploaded_image(
     image: UploadFile = File(...),
     top_k: Optional[int] = Form(default=None),
     min_score: Optional[float] = Form(default=None),
+    # Section 14 of the specification sends a crop as four normalized numbers,
+    # because multipart form data has nowhere to put a nested object.
+    crop_x: Optional[float] = Form(default=None),
+    crop_y: Optional[float] = Form(default=None),
+    crop_width: Optional[float] = Form(default=None),
+    crop_height: Optional[float] = Form(default=None),
+    detect: bool = Form(default=False),
+    detect_prompt: Optional[list[str]] = Form(default=None),
     service: SearchService = Depends(get_search_service),
     settings: Settings = Depends(get_settings),
 ) -> SearchResponse:
@@ -99,6 +113,14 @@ async def search_uploaded_image(
         filename=image.filename or "query",
         top_k=top_k,
         min_score=min_score,
+        crop=parse_crop_form_fields(
+            crop_x=crop_x,
+            crop_y=crop_y,
+            crop_width=crop_width,
+            crop_height=crop_height,
+        ),
+        detect=detect,
+        detect_prompt=detect_prompt,
     )
 
 

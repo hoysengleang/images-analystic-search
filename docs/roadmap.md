@@ -39,6 +39,9 @@ Aligned to the milestones in `VISUAL_PRODUCT_SEARCH_SPEC.md`.
 
 ## Next (v0.2 — developer experience)
 
+- Query-side region search: crop rectangle and optional object detection (**shipped**)
+- ONNX Runtime provider, so a server runs search without PyTorch (**shipped**)
+- Scalar-rendered API reference at `/docs`, replacing Swagger UI (**shipped**)
 - A demo page: drag an image in, see results, no client code needed
 - Zero-shot labelling, scoring an image against caller-supplied labels — the text encoder is already loaded, so this is nearly free
 - Client examples for Go and Ruby (curl, Python, JavaScript, and PHP are in `examples/`)
@@ -65,7 +68,7 @@ Aligned to the milestones in `VISUAL_PRODUCT_SEARCH_SPEC.md`.
 
 ## Known limits
 
-- **Whole-image embedding.** A product photographed on a cluttered desk yields a vector that includes the desk. Region search — detecting objects, then indexing and searching each crop — is the largest open feature and needs a second (detector) model.
+- **Whole-image embedding on the index side.** A *query* photo can now be cropped, or detected and searched region by region, so a shopper's cluttered picture is handled. A cluttered *catalogue* photo is not: each indexed image is still one vector covering the whole frame. Indexing each crop needs product grouping first, or results fill with duplicates of the same photo — see [ADR 0007](adr/0007-query-side-region-search.md).
 - **Synchronous indexing.** Large backfills are a series of HTTP calls from the client, not a job with a progress bar.
 - **One API key per server.** There is no per-tenant key scoping yet.
 

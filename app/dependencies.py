@@ -8,9 +8,12 @@ tests have one place to override.
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Optional
 
 from app.core.config import Settings, get_settings
 from app.core.errors import ServiceUnavailableError
+from app.detection.base import DetectorProvider
+from app.detection.registry import get_detector_registry
 from app.embedding.manager import EmbeddingManager
 from app.embedding.registry import get_embedding_registry
 from app.providers.qdrant_provider import get_qdrant_client
@@ -24,6 +27,7 @@ from app.services.vector_service import VectorService
 __all__ = [
     "get_collection_metadata_service",
     "get_collection_service",
+    "get_detector_provider",
     "get_embedding_manager",
     "get_image_loader",
     "get_indexing_service",
@@ -38,6 +42,24 @@ def get_embedding_manager() -> EmbeddingManager:
     return EmbeddingManager(
         settings=get_settings(),
         registry=get_embedding_registry(),
+    )
+
+
+@lru_cache
+def get_detector_provider() -> Optional[DetectorProvider]:
+    """The query-side object detector, or None when detection is switched off.
+
+    Off is the default. The detector reads no stored state, so turning it on or
+    off is a restart rather than a reindex.
+    """
+    settings: Settings = get_settings()
+    if not settings.detection_enabled:
+        return None
+
+    provider_class = get_detector_registry().get(settings.detector_provider)
+    return provider_class(
+        model_path=settings.detector_model_path,
+        tokenizer_path=settings.detector_tokenizer_path,
     )
 
 
@@ -103,4 +125,5 @@ def get_search_service() -> SearchService:
         image_loader=get_image_loader(),
         embedding_manager=get_embedding_manager(),
         vector_service=get_vector_service(),
+        detector=get_detector_provider(),
     )

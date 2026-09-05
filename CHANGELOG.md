@@ -14,9 +14,18 @@ on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases follow
   product filters, durable vectors, and deterministic cosine ranking.
 - Contributor, security, support, issue, and pull-request guidance.
 - Automated dependency updates and CodeQL security analysis.
+- Query-side region search: a search may carry a crop rectangle, or ask the
+  server to detect the objects in the query image and search each one. Indexed
+  images are unchanged, and the detector is off by default. See
+  [ADR 0007](docs/adr/0007-query-side-region-search.md).
+- An ONNX Runtime embedding provider, so a server can run search without
+  PyTorch. `scripts/export_onnx.py` exports the encoders and refuses to
+  finish unless they reproduce the PyTorch model on real inputs.
 
 ### Changed
 
+- The interactive API reference at `/docs` is rendered by Scalar instead of
+  Swagger UI. ReDoc is unchanged at `/redoc`.
 - Development dependencies are separated from production dependencies.
 - Route response models, tenant guards, embedding configuration, and Qdrant
   filter compilation now have single, explicit owners.

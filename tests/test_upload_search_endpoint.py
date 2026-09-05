@@ -70,8 +70,8 @@ class FakeVectorService:
         return results
 
 
-def make_image_bytes() -> bytes:
-    image = Image.new("RGB", (2, 2), color=(255, 255, 0))
+def make_image_bytes(size: tuple = (2, 2)) -> bytes:
+    image = Image.new("RGB", size, color=(255, 255, 0))
     buffer = BytesIO()
     image.save(buffer, format="PNG")
     return buffer.getvalue()
@@ -157,3 +157,85 @@ def test_upload_query_invalid_file_is_rejected(tmp_path: Path) -> None:
     body = response.json()
     assert response.status_code == 400
     assert body["error"]["code"] == "INVALID_IMAGE"
+
+
+def upload_search(client: TestClient, data: dict, *, size: tuple = (400, 400)):
+    return client.post(
+        "/collections/products/search/upload",
+        data=data,
+        files={"image": ("query.png", make_image_bytes(size), "image/png")},
+    )
+
+
+def test_upload_search_accepts_a_crop_rectangle(tmp_path: Path) -> None:
+    """Multipart has no nested objects, so a crop arrives as four numbers."""
+    service, _ = make_search_service(tmp_path)
+    app.dependency_overrides[get_search_service] = lambda: service
+    client = TestClient(app)
+
+    response = upload_search(
+        client,
+        {
+            "top_k": "1",
+            "crop_x": "0.25",
+            "crop_y": "0.25",
+            "crop_width": "0.5",
+            "crop_height": "0.5",
+        },
+    )
+
+    body = response.json()
+    assert response.status_code == 200
+    assert body["query_regions"] == [
+        {
+            "box": {"x": 0.25, "y": 0.25, "width": 0.5, "height": 0.5},
+            "score": 1.0,
+            "label": None,
+        }
+    ]
+    assert body["results"][0]["matched_query_region"] == 0
+
+
+def test_upload_search_refuses_half_a_crop(tmp_path: Path) -> None:
+    """Three of four fields is always a mistake, never an intention."""
+    service, _ = make_search_service(tmp_path)
+    app.dependency_overrides[get_search_service] = lambda: service
+    client = TestClient(app)
+
+    response = upload_search(
+        client, {"crop_x": "0.25", "crop_y": "0.25", "crop_width": "0.5"}
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "INCOMPLETE_CROP"
+
+
+def test_upload_search_refuses_a_crop_that_leaves_the_image(tmp_path: Path) -> None:
+    service, _ = make_search_service(tmp_path)
+    app.dependency_overrides[get_search_service] = lambda: service
+    client = TestClient(app)
+
+    response = upload_search(
+        client,
+        {
+            "crop_x": "0.9",
+            "crop_y": "0.0",
+            "crop_width": "0.5",
+            "crop_height": "0.5",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "INVALID_CROP"
+
+
+def test_upload_search_says_when_no_detector_is_configured(tmp_path: Path) -> None:
+    """detect is off by default, so asking for it should explain itself."""
+    service, _ = make_search_service(tmp_path)
+    app.dependency_overrides[get_search_service] = lambda: service
+    client = TestClient(app)
+
+    response = upload_search(client, {"detect": "true"})
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "DETECTION_NOT_AVAILABLE"

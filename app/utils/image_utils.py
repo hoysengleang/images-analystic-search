@@ -14,10 +14,16 @@ from app.core.constants import (
     SUPPORTED_IMAGE_EXTENSIONS,
 )
 from app.core.errors import (
+    BadRequestError,
     ImageTooLargeError,
     InvalidImageError,
     UnsupportedImageTypeError,
 )
+
+#: A crop shorter than this on either edge carries too few pixels to embed
+#: usefully, and in practice means the caller sent pixels where the API asks for
+#: fractions of the image.
+MIN_CROP_PIXELS = 16
 
 
 @dataclass(frozen=True)
@@ -146,6 +152,101 @@ def letterbox_to_square(
         if scaled is not None:
             scaled.close()
         rgb_image.close()
+
+
+def resize_shortest_side_and_center_crop(image: Image.Image, size: int) -> Image.Image:
+    """Fit the image to a square the way the stock CLIP transform does.
+
+    The shortest side is scaled to ``size`` and the middle square is kept, so
+    whatever falls outside that square is discarded. See
+    :func:`letterbox_to_square` for the alternative that keeps the whole frame.
+
+    Reimplemented on Pillow so a provider that does not depend on torchvision
+    can still reproduce its output. The mixed arithmetic below looks arbitrary
+    and is not: torchvision truncates the scaled long edge but rounds the crop
+    offset, and copying that exactly is what keeps the two byte-identical.
+    Rounding both the obvious way shifts the crop by a pixel on most landscape
+    photos, which is invisible until search quality drifts from the reference.
+    """
+    rgb_image = image_to_rgb(image)
+    scaled: Optional[Image.Image] = None
+    try:
+        width, height = rgb_image.size
+        if width == 0 or height == 0:
+            raise InvalidImageError(message="Image has no pixels")
+
+        # The shortest side lands on `size` exactly, so the long side is always
+        # at least `size` and the crop below never runs off the edge.
+        short, long = (width, height) if width <= height else (height, width)
+        scaled_long = int(size * long / short)
+        scaled_size = (size, scaled_long) if width <= height else (scaled_long, size)
+        scaled = rgb_image.resize(scaled_size, Image.BICUBIC)
+
+        left = int(round((scaled_size[0] - size) / 2.0))
+        top = int(round((scaled_size[1] - size) / 2.0))
+        cropped = scaled.crop((left, top, left + size, top + size))
+        # crop() is lazy and keeps a reference to its source, so the pixels have
+        # to be materialized before that source is closed below.
+        cropped.load()
+        return cropped
+    finally:
+        if scaled is not None:
+            scaled.close()
+        rgb_image.close()
+
+
+def crop_to_normalized_box(
+    image: Image.Image,
+    *,
+    x: float,
+    y: float,
+    width: float,
+    height: float,
+    min_pixels: int = MIN_CROP_PIXELS,
+) -> Image.Image:
+    """Cut out the region a caller asked for, given in fractions of the image.
+
+    Normalized coordinates let one box serve a thumbnail and the full-resolution
+    original alike, which is why the API takes them that way. The box is clamped
+    to the image rather than refused when rounding pushes an edge a pixel past
+    the boundary; only a box with almost no pixels in it is an error, because
+    that is what a caller who sent pixel coordinates by mistake produces.
+    """
+    rgb_image = image_to_rgb(image)
+    try:
+        image_width, image_height = rgb_image.size
+        if image_width == 0 or image_height == 0:
+            raise InvalidImageError(message="Image has no pixels")
+
+        left = _clamp(round(x * image_width), 0, image_width - 1)
+        top = _clamp(round(y * image_height), 0, image_height - 1)
+        right = _clamp(round((x + width) * image_width), left + 1, image_width)
+        bottom = _clamp(round((y + height) * image_height), top + 1, image_height)
+
+        if right - left < min_pixels or bottom - top < min_pixels:
+            raise BadRequestError(
+                message="Crop rectangle covers too little of the image to search",
+                code="CROP_TOO_SMALL",
+                details={
+                    "crop_width_pixels": right - left,
+                    "crop_height_pixels": bottom - top,
+                    "min_pixels": min_pixels,
+                    "image_width": image_width,
+                    "image_height": image_height,
+                },
+            )
+
+        cropped = rgb_image.crop((left, top, right, bottom))
+        # crop() is lazy and keeps a reference to its source, so materialize the
+        # pixels before the RGB copy below is closed.
+        cropped.load()
+        return cropped
+    finally:
+        rgb_image.close()
+
+
+def _clamp(value: int, lowest: int, highest: int) -> int:
+    return max(lowest, min(value, highest))
 
 
 def center_crop_fraction(image: Image.Image, fraction: float) -> Image.Image:

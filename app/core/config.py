@@ -81,6 +81,72 @@ class Settings(BaseSettings):
         alias="WARMUP_MODEL_ON_STARTUP",
     )
 
+    # --- ONNX Runtime provider -----------------------------------------
+    # Read only when a collection uses the "onnx" provider. Build the files
+    # with scripts/export_onnx.py. The text encoder is optional: without it
+    # the provider serves image search only and refuses text queries.
+    onnx_image_model_path: Optional[str] = Field(
+        default=None,
+        alias="ONNX_IMAGE_MODEL_PATH",
+    )
+    onnx_text_model_path: Optional[str] = Field(
+        default=None,
+        alias="ONNX_TEXT_MODEL_PATH",
+    )
+    onnx_tokenizer_path: Optional[str] = Field(
+        default=None,
+        alias="ONNX_TOKENIZER_PATH",
+    )
+
+    # --- Query-side object detection -----------------------------------
+    # Detection narrows a query image before it is embedded; it never touches
+    # stored vectors, so it is a server-wide switch rather than something
+    # pinned per collection, and turning it on needs no reindex.
+    detector_provider: str = Field(default="none", alias="DETECTOR_PROVIDER")
+    detector_model_path: Optional[str] = Field(
+        default=None,
+        alias="DETECTOR_MODEL_PATH",
+    )
+    detector_tokenizer_path: Optional[str] = Field(
+        default=None,
+        alias="DETECTOR_TOKENIZER_PATH",
+    )
+    # Open-vocabulary detectors have no class list, so they need to be told what
+    # to look for. This is the fallback when a caller does not say.
+    #
+    # The phrasing matters more than it looks: OWL-ViT scores against CLIP text
+    # embeddings, so a prompt shaped like a caption beats a bare noun. Measured
+    # on one cluttered scene, "a photo of an object" peaked at 0.16 while "an
+    # object" found nothing at all. A caller who names the thing does far better
+    # still - "a handbag" scored 0.73 on the same picture - which is why
+    # detect_prompt exists.
+    detector_prompts: list[str] = Field(
+        default_factory=lambda: ["a photo of an object"],
+        alias="DETECTOR_PROMPTS",
+    )
+    # Low, because generic prompts score low. Raise it if you see regions that
+    # are not really there.
+    detector_min_score: float = Field(
+        default=0.05,
+        alias="DETECTOR_MIN_SCORE",
+        ge=0.0,
+        le=1.0,
+    )
+    # One by default, and the default matters more than it looks. Folding
+    # regions by their best score can only raise a product's score, never lower
+    # it, so a weak extra region lifts whatever it happens to resemble. Measured
+    # on a bag photographed beside a laptop: searching the strongest region
+    # alone put the bag 0.257 clear of the runner-up, while adding a second,
+    # 0.09-confidence region lifted the laptop and cut the lead to 0.073 -
+    # worse than not detecting at all. Raise this only for "find everything in
+    # this photo" behaviour, not to find one product.
+    max_query_regions: int = Field(
+        default=1,
+        alias="MAX_QUERY_REGIONS",
+        ge=1,
+        le=10,
+    )
+
     # --- Image sources -------------------------------------------------
     allowed_image_root: Path = Field(
         default=Path("/data/images"),
@@ -113,6 +179,15 @@ class Settings(BaseSettings):
     # --- Search limits -------------------------------------------------
     default_top_k: int = Field(default=10, alias="DEFAULT_TOP_K", ge=1)
     max_top_k: int = Field(default=100, alias="MAX_TOP_K", ge=1)
+    # Section 13 of the specification asks for more candidates than the final
+    # limit, because results are collapsed after retrieval: several query
+    # regions can land on the same image, and one product has several images.
+    search_candidate_multiplier: int = Field(
+        default=4,
+        alias="SEARCH_CANDIDATE_MULTIPLIER",
+        ge=1,
+        le=20,
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -143,7 +218,16 @@ class Settings(BaseSettings):
     def max_request_body_bytes(self) -> int:
         return self.max_request_body_mb * 1024 * 1024
 
-    @field_validator("api_key", "qdrant_api_key", mode="before")
+    @field_validator(
+        "api_key",
+        "qdrant_api_key",
+        "onnx_image_model_path",
+        "onnx_text_model_path",
+        "onnx_tokenizer_path",
+        "detector_model_path",
+        "detector_tokenizer_path",
+        mode="before",
+    )
     @classmethod
     def empty_string_to_none(cls, value: object) -> object:
         if isinstance(value, str) and not value.strip():
@@ -175,6 +259,7 @@ class Settings(BaseSettings):
     @field_validator(
         "app_env",
         "default_embedding_provider",
+        "detector_provider",
         "default_distance",
         "search_engine",
         "image_framing",
@@ -226,6 +311,44 @@ class Settings(BaseSettings):
     def validate_search_limits(self) -> "Settings":
         if self.default_top_k > self.max_top_k:
             raise ValueError("DEFAULT_TOP_K must be less than or equal to MAX_TOP_K")
+        return self
+
+    @model_validator(mode="after")
+    def validate_onnx_paths(self) -> "Settings":
+        """A misconfigured default provider should fail at boot, not at search."""
+        if self.default_embedding_provider == "onnx" and not self.onnx_image_model_path:
+            raise ValueError(
+                "DEFAULT_EMBEDDING_PROVIDER=onnx requires ONNX_IMAGE_MODEL_PATH; "
+                "export one with scripts/export_onnx.py"
+            )
+        if self.onnx_text_model_path and not self.onnx_tokenizer_path:
+            raise ValueError(
+                "ONNX_TEXT_MODEL_PATH requires ONNX_TOKENIZER_PATH; the text "
+                "encoder cannot run without the tokenizer it was exported with"
+            )
+        return self
+
+    @property
+    def detection_enabled(self) -> bool:
+        """Whether a caller may ask the server to find the objects itself."""
+        return self.detector_provider != "none"
+
+    @model_validator(mode="after")
+    def validate_detector_paths(self) -> "Settings":
+        """A detector named but not supplied should fail at boot, not at search."""
+        if self.detection_enabled and not (
+            self.detector_model_path and self.detector_tokenizer_path
+        ):
+            raise ValueError(
+                "DETECTOR_PROVIDER needs DETECTOR_MODEL_PATH and "
+                "DETECTOR_TOKENIZER_PATH; export them with "
+                "scripts/export_detector_onnx.py, or set DETECTOR_PROVIDER=none"
+            )
+        if not self.detector_prompts:
+            raise ValueError(
+                "DETECTOR_PROMPTS must name at least one thing to look for; an "
+                "open-vocabulary detector has no class list of its own"
+            )
         return self
 
     @model_validator(mode="after")

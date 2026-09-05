@@ -70,6 +70,8 @@ def test_search_returns_similar_images() -> None:
             "source_value": "https://example.com/a.jpg",
             "metadata": {"name": "Blue Shoe"},
             "display_image_url": "https://cdn.example.com/a.jpg",
+            # Null because the whole image was searched, not a region of it.
+            "matched_query_region": None,
         }
     ]
     assert service.requests[0].collection_name == "products"

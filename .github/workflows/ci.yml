@@ -19,7 +19,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The floor and the version the Docker image ships.
         python-version: ["3.9", "3.12"]
 
     steps:
@@ -51,12 +50,10 @@ jobs:
         run: python -m pip check
 
       - name: Lint
-        run: ruff check app tests examples benchmarks
+        run: ruff check app tests examples benchmarks scripts
 
       - name: Check formatting
-        run: ruff format --check app tests examples benchmarks
+        run: ruff format --check app tests examples benchmarks scripts
 
       - name: Test
-        # No network and no model weights are needed; the suite uses fakes,
-        # an in-memory Qdrant, and a randomly-initialised model architecture.
         run: python -m pytest -q

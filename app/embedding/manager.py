@@ -92,7 +92,17 @@ class EmbeddingManager:
                 # would also swallow a real error from inside the constructor.
                 **self._supported_options(
                     provider_class,
-                    {"framing": framing, "views": views},
+                    {
+                        "framing": framing,
+                        "views": views,
+                        # Provider-specific settings ride the same channel:
+                        # a provider opts in by naming the parameter, and
+                        # every other provider never sees it. The paths are
+                        # process-wide, so they stay out of the cache key.
+                        "image_model_path": self.settings.onnx_image_model_path,
+                        "text_model_path": self.settings.onnx_text_model_path,
+                        "tokenizer_path": self.settings.onnx_tokenizer_path,
+                    },
                 ),
             )
 

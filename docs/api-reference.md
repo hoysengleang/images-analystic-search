@@ -115,6 +115,31 @@ Re-indexing an existing `id` overwrites that record.
 
 `top_k` defaults to `DEFAULT_TOP_K` and is refused above `MAX_TOP_K`. `min_score` drops results below that similarity score.
 
+### Searching part of the image
+
+Every endpoint that takes a query image also accepts:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `crop` | object | `{x, y, width, height}`, each a fraction of the image from 0 to 1. Searches only that region. |
+| `detect` | boolean | Find the objects in the image and search each one. Requires `DETECTOR_PROVIDER`; defaults to false. |
+| `detect_prompt` | list of strings | What to look for, for example `["a handbag"]`. Defaults to `DETECTOR_PROMPTS`. |
+
+`crop` and `detect` are mutually exclusive. On `/search/upload` the crop arrives
+as four separate form fields — `crop_x`, `crop_y`, `crop_width`, `crop_height` —
+and all four are required together.
+
+The response then carries:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `query_regions` | list | The regions actually searched, each `{box, score, label}`. Empty when the whole image was used, including when detection found nothing. |
+| `results[].matched_query_region` | integer or null | Index into `query_regions` naming the region that produced this hit. |
+
+When several regions are searched, an image keeps its single best score across
+them, and `min_score` applies to each region's score rather than to the merged
+one. A detector that finds nothing falls back to searching the whole image.
+
 ### Filters
 
 Filters match against the `metadata` you stored with each image. Three forms are accepted:
@@ -278,6 +303,13 @@ Only 503 is worth retrying automatically.
 | `UNSUPPORTED_DISTANCE` | 400 | Not one of cosine, dot, euclid, manhattan |
 | `UNKNOWN_EMBEDDING_PROVIDER` | 400 | No provider registered under that name |
 | `TEXT_SEARCH_NOT_SUPPORTED` | 400 | The collection's model has no text encoder |
+| `CROP_TOO_SMALL` | 400 | The crop rectangle covers too few pixels to search |
+| `INCOMPLETE_CROP` | 400 | An upload sent some but not all of the four `crop_*` fields |
+| `INVALID_CROP` | 400 | The `crop_*` fields are not a valid region of the image |
+| `CROP_AND_DETECT_CONFLICT` | 400 | Send a crop or `detect`, not both |
+| `DETECTION_NOT_AVAILABLE` | 400 | `detect` was asked for but `DETECTOR_PROVIDER` is `none` |
+| `DETECTOR_PROMPTS_REQUIRED` | 400 | Detection needs at least one prompt saying what to find |
+| `UNKNOWN_DETECTOR_PROVIDER` | 400 | `DETECTOR_PROVIDER` names a detector that is not registered |
 
 ### Images
 
@@ -314,5 +346,12 @@ Only 503 is worth retrying automatically.
 | `OPENCLIP_MODEL_LOAD_FAILED` | 503 | Weights could not be downloaded or loaded |
 | `OPENCLIP_IMAGE_EMBEDDING_FAILED`, `OPENCLIP_TEXT_EMBEDDING_FAILED` | 503 | The model failed while encoding |
 | `OPENCLIP_VECTOR_SIZE_MISMATCH` | 503 | `DEFAULT_VECTOR_SIZE` does not match the model's real output |
+| `ONNX_MODEL_LOAD_FAILED` | 503 | The exported `.onnx` file is missing or could not be opened |
+| `ONNX_TOKENIZER_LOAD_FAILED` | 503 | The tokenizer file is missing, unreadable, or is not a CLIP tokenizer |
+| `ONNX_RUNTIME_NOT_INSTALLED`, `ONNX_TOKENIZER_NOT_INSTALLED` | 503 | Run `pip install -r requirements-onnx.txt` on the server |
+| `ONNX_IMAGE_EMBEDDING_FAILED`, `ONNX_TEXT_EMBEDDING_FAILED` | 503 | The model failed while encoding |
+| `ONNX_VECTOR_SIZE_MISMATCH` | 503 | `DEFAULT_VECTOR_SIZE` does not match the exported model's real output |
+| `DETECTOR_MODEL_LOAD_FAILED`, `DETECTOR_TOKENIZER_LOAD_FAILED` | 503 | The detector files are missing or unreadable |
+| `DETECTOR_INFERENCE_FAILED` | 503 | The detector failed while looking at the query image |
 | `UNKNOWN_SEARCH_ENGINE` | 503 | `SEARCH_ENGINE` names a backend that is not registered |
 | `SERVICE_UNAVAILABLE`, `INTERNAL_SERVER_ERROR` | 503 / 500 | Generic backend failure |

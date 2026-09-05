@@ -6,8 +6,10 @@ import json
 from typing import Any, Optional
 
 from fastapi import UploadFile
+from pydantic import ValidationError
 
 from app.core.errors import BadRequestError, ImageTooLargeError
+from app.schemas.image import CropRectangle
 
 UPLOAD_CHUNK_SIZE = 64 * 1024
 
@@ -56,3 +58,42 @@ def _invalid_metadata_error() -> BadRequestError:
         message="Upload metadata must be a valid JSON object",
         code="INVALID_UPLOAD_METADATA",
     )
+
+
+def parse_crop_form_fields(
+    *,
+    crop_x: Optional[float],
+    crop_y: Optional[float],
+    crop_width: Optional[float],
+    crop_height: Optional[float],
+) -> Optional[CropRectangle]:
+    values = (crop_x, crop_y, crop_width, crop_height)
+    if all(value is None for value in values):
+        return None
+    if any(value is None for value in values):
+        raise BadRequestError(
+            message=(
+                "A crop needs all four of crop_x, crop_y, crop_width and crop_height"
+            ),
+            code="INCOMPLETE_CROP",
+            details={
+                "crop_x": crop_x,
+                "crop_y": crop_y,
+                "crop_width": crop_width,
+                "crop_height": crop_height,
+            },
+        )
+
+    try:
+        return CropRectangle(
+            x=crop_x,
+            y=crop_y,
+            width=crop_width,
+            height=crop_height,
+        )
+    except ValidationError as exc:
+        raise BadRequestError(
+            message="Crop rectangle is not a valid region of the image",
+            code="INVALID_CROP",
+            details={"errors": [error["msg"] for error in exc.errors()]},
+        ) from exc
