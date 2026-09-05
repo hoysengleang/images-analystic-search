@@ -8,3 +8,8 @@ __pycache__/
 .coverage
 htmlcov/
 .DS_Store
+
+# Runtime state
+data/collections.json
+data/images/*
+!data/images/.gitkeep

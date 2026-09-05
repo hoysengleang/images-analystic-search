@@ -4,8 +4,15 @@ from app.core.errors import BadRequestError
 from app.utils.url_utils import validate_safe_url
 
 
+def public_resolver(hostname: str) -> list:
+    return ["93.184.216.34"]
+
+
 def test_allows_normal_https_image_url() -> None:
-    safe_url = validate_safe_url("https://example.com/images/a.jpg")
+    safe_url = validate_safe_url(
+        "https://example.com/images/a.jpg",
+        host_resolver=public_resolver,
+    )
 
     assert safe_url.url == "https://example.com/images/a.jpg"
     assert safe_url.timeout_seconds == 10
@@ -13,7 +20,10 @@ def test_allows_normal_https_image_url() -> None:
 
 
 def test_allows_normal_http_image_url() -> None:
-    safe_url = validate_safe_url("http://example.com/images/a.jpg")
+    safe_url = validate_safe_url(
+        "http://example.com/images/a.jpg",
+        host_resolver=public_resolver,
+    )
 
     assert safe_url.url == "http://example.com/images/a.jpg"
 
@@ -58,6 +68,7 @@ def test_exposes_timeout_and_redirect_options() -> None:
         "https://example.com/a.jpg",
         timeout_seconds=5,
         max_redirects=2,
+        host_resolver=public_resolver,
     )
 
     assert safe_url.request_options() == {

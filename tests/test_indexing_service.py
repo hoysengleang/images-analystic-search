@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
+from app.core.config import Settings
 from app.core.errors import InvalidImageError, ResourceNotFoundError
 from app.embedding.base import EmbeddingProvider
 from app.schemas.collection import CollectionModelConfig
@@ -37,13 +38,16 @@ class FakeEmbeddingManager:
         self.calls = []
         self.provider = FakeEmbeddingProvider()
 
-    def get_provider(self, *, provider_name, model_name, model_pretrained, vector_size):
+    def get_provider(
+        self, *, provider_name, model_name, model_pretrained, vector_size, **options
+    ):
         self.calls.append(
             {
                 "provider_name": provider_name,
                 "model_name": model_name,
                 "model_pretrained": model_pretrained,
                 "vector_size": vector_size,
+                **options,
             }
         )
         return self.provider
@@ -53,9 +57,19 @@ class FakeVectorService:
     def __init__(self) -> None:
         self.upserts = []
 
-    def upsert_image(self, **kwargs):
-        self.upserts.append(kwargs)
-        return kwargs["image_id"]
+    def upsert_images(self, *, collection_name, records, embedding):
+        for record in records:
+            self.upserts.append(
+                {
+                    "collection_name": collection_name,
+                    "image_id": record.image_id,
+                    "vector": record.vector,
+                    "source": record.source,
+                    "metadata": record.metadata,
+                    "embedding": embedding,
+                }
+            )
+        return [record.image_id for record in records]
 
 
 def make_service(tmp_path: Path):
@@ -73,6 +87,7 @@ def make_service(tmp_path: Path):
     embedding_manager = FakeEmbeddingManager()
     vector_service = FakeVectorService()
     service = IndexingService(
+        settings=Settings(),
         metadata_service=metadata_service,
         image_loader=FakeImageLoader(),
         embedding_manager=embedding_manager,
@@ -153,6 +168,7 @@ def test_failed_images_do_not_break_successful_images(tmp_path: Path) -> None:
 def test_does_not_index_into_missing_collection(tmp_path: Path) -> None:
     metadata_service = CollectionMetadataService(tmp_path / "collections.json")
     service = IndexingService(
+        settings=Settings(),
         metadata_service=metadata_service,
         image_loader=FakeImageLoader(),
         embedding_manager=FakeEmbeddingManager(),

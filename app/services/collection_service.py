@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from typing import Optional, TYPE_CHECKING
+from contextlib import suppress
+from typing import TYPE_CHECKING, Optional
 
-from app.core.errors import ConflictError, ServiceUnavailableError
-from app.embedding.manager import EmbeddingManager, get_embedding_manager
-from app.providers.qdrant_provider import get_qdrant_client
+from app.core.config import Settings
+from app.core.errors import BadRequestError, ConflictError, ServiceUnavailableError
+from app.embedding.manager import EmbeddingManager
 from app.schemas.collection import (
     CollectionCreateRequest,
     CollectionModelConfig,
@@ -14,7 +15,6 @@ from app.schemas.collection import (
 from app.services.collection_metadata_service import (
     CollectionMetadata,
     CollectionMetadataService,
-    get_collection_metadata_service,
 )
 
 if TYPE_CHECKING:
@@ -22,16 +22,20 @@ if TYPE_CHECKING:
 
 
 class CollectionService:
+    """Creates and removes collections in Qdrant and in the local registry."""
+
     def __init__(
         self,
         *,
-        qdrant_client: Optional["QdrantClient"] = None,
-        metadata_service: Optional[CollectionMetadataService] = None,
-        embedding_manager: Optional[EmbeddingManager] = None,
+        settings: Settings,
+        qdrant_client: QdrantClient,
+        metadata_service: CollectionMetadataService,
+        embedding_manager: EmbeddingManager,
     ) -> None:
-        self.qdrant_client = qdrant_client or get_qdrant_client()
-        self.metadata_service = metadata_service or get_collection_metadata_service()
-        self.embedding_manager = embedding_manager or get_embedding_manager()
+        self.settings = settings
+        self.qdrant_client = qdrant_client
+        self.metadata_service = metadata_service
+        self.embedding_manager = embedding_manager
 
     def create_collection(
         self,
@@ -66,14 +70,13 @@ class CollectionService:
     def get_collection_stats(self, collection_name: str) -> CollectionStatsResponse:
         metadata = self.metadata_service.get(collection_name)
         points_count = self._get_qdrant_points_count(metadata.collection_name)
-        model = self._model_config_from_metadata(metadata)
 
         return CollectionStatsResponse(
             name=metadata.collection_name,
             points_count=points_count,
             vector_size=metadata.vector_size,
             distance=metadata.distance,
-            model=model,
+            model=metadata.to_model_config(),
         )
 
     def delete_collection(self, collection_name: str) -> CollectionResponse:
@@ -105,7 +108,7 @@ class CollectionService:
         model: Optional[CollectionModelConfig],
     ) -> CollectionModelConfig:
         if model is not None:
-            return model.model_copy(update={"distance": "cosine"})
+            return model
 
         metadata = self.embedding_manager.get_default_model_metadata()
         return CollectionModelConfig(
@@ -113,7 +116,9 @@ class CollectionService:
             name=metadata.model_name,
             pretrained=metadata.model_pretrained,
             vector_size=metadata.vector_size,
-            distance="cosine",
+            distance=self.settings.default_distance,
+            framing=self.settings.image_framing,
+            views=self.settings.embed_views,
         )
 
     def _ensure_collection_does_not_exist(self, collection_name: str) -> None:
@@ -148,7 +153,7 @@ class CollectionService:
                 collection_name=collection_name,
                 vectors_config=qdrant_models.VectorParams(
                     size=model.vector_size,
-                    distance=qdrant_models.Distance.COSINE,
+                    distance=self._qdrant_distance(model.distance),
                 ),
                 metadata={
                     "embedding_provider": model.provider,
@@ -165,11 +170,29 @@ class CollectionService:
                 details={"collection_name": collection_name, "error": str(exc)},
             ) from exc
 
-    def _rollback_qdrant_collection(self, collection_name: str) -> None:
+    def _qdrant_distance(self, distance: str):
+        from qdrant_client.http import models as qdrant_models
+
+        distances = {
+            "cosine": qdrant_models.Distance.COSINE,
+            "dot": qdrant_models.Distance.DOT,
+            "euclid": qdrant_models.Distance.EUCLID,
+            "manhattan": qdrant_models.Distance.MANHATTAN,
+        }
+
         try:
+            return distances[distance]
+        except KeyError as exc:
+            raise BadRequestError(
+                message=f"Unsupported distance metric: {distance}",
+                code="UNSUPPORTED_DISTANCE",
+                details={"distance": distance, "supported": sorted(distances)},
+            ) from exc
+
+    def _rollback_qdrant_collection(self, collection_name: str) -> None:
+        # Best effort: the caller is already raising the real failure.
+        with suppress(Exception):
             self.qdrant_client.delete_collection(collection_name=collection_name)
-        except Exception:
-            pass
 
     def _get_qdrant_points_count(self, collection_name: str) -> int:
         try:
@@ -195,24 +218,8 @@ class CollectionService:
     ) -> CollectionResponse:
         return CollectionResponse(
             name=metadata.collection_name,
-            model=self._model_config_from_metadata(metadata),
+            model=metadata.to_model_config(),
             points_count=points_count,
             metadata={},
             created_at=metadata.created_at,
         )
-
-    def _model_config_from_metadata(
-        self,
-        metadata: CollectionMetadata,
-    ) -> CollectionModelConfig:
-        return CollectionModelConfig(
-            provider=metadata.embedding_provider,
-            name=metadata.embedding_model,
-            pretrained=metadata.embedding_pretrained,
-            vector_size=metadata.vector_size,
-            distance=metadata.distance,
-        )
-
-
-def get_collection_service() -> CollectionService:
-    return CollectionService()

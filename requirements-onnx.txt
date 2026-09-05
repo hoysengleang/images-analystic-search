@@ -1,0 +1,8 @@
+# Runtime for DEFAULT_EMBEDDING_PROVIDER=onnx.
+#
+# Install these *instead of* torch and open_clip_torch to run inference without
+# PyTorch. Exporting the model files still needs the full requirements.txt, but
+# that is a one-off step you can do on any machine — see scripts/export_onnx.py.
+onnxruntime>=1.17.0,<2.0.0
+# Only needed for text and hybrid search; the image encoder does not tokenize.
+tokenizers>=0.15.0,<1.0.0

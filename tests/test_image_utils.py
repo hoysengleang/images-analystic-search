@@ -3,7 +3,11 @@ from io import BytesIO
 import pytest
 from PIL import Image
 
-from app.core.errors import ImageTooLargeError, InvalidImageError, UnsupportedImageTypeError
+from app.core.errors import (
+    ImageTooLargeError,
+    InvalidImageError,
+    UnsupportedImageTypeError,
+)
 from app.utils.image_utils import (
     image_to_rgb,
     normalize_image_extension,

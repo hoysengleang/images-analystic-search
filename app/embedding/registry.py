@@ -1,5 +1,6 @@
 from app.core.errors import BadRequestError
 from app.embedding.base import EmbeddingProvider
+from app.embedding.providers.onnx_provider import ONNXProvider
 from app.embedding.providers.openclip_provider import OpenCLIPProvider
 
 
@@ -28,6 +29,7 @@ class EmbeddingProviderRegistry:
 
 embedding_registry = EmbeddingProviderRegistry()
 embedding_registry.register(OpenCLIPProvider)
+embedding_registry.register(ONNXProvider)
 
 
 def get_embedding_registry() -> EmbeddingProviderRegistry:

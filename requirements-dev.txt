@@ -1,0 +1,7 @@
+-r requirements.txt
+# The ONNX provider is a supported deployment, so CI exercises it too. `onnx`
+# is test-only: it builds the small synthetic graphs the contract test runs.
+-r requirements-onnx.txt
+onnx>=1.15.0,<2.0.0
+pytest>=8.0.0,<9.0.0
+ruff>=0.6.0,<1.0.0

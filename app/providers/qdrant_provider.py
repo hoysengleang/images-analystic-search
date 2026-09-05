@@ -1,6 +1,6 @@
 from dataclasses import asdict, dataclass
 from functools import lru_cache
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from app.core.config import Settings, get_settings
 

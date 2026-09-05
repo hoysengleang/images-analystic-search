@@ -1,18 +1,20 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Optional, Protocol, TYPE_CHECKING
+from typing import Any, Optional, Protocol
 from uuid import NAMESPACE_URL, uuid5
 
 from app.core.errors import ResourceNotFoundError, ServiceUnavailableError
 from app.embedding.base import EmbeddingModelMetadata
-from app.providers.qdrant_provider import get_qdrant_client
-from app.schemas.image import ImageSource
-from app.schemas.image_record import ImageDeleteResponse, ImageRecordResponse
+from app.providers.qdrant_filters import build_qdrant_filter
+from app.schemas.image_record import (
+    ImageDeleteResponse,
+    ImageListResponse,
+    ImageRecordResponse,
+)
 from app.schemas.search import SearchResult
-
-if TYPE_CHECKING:
-    from qdrant_client.http import models as qdrant_models
 
 
 class VectorSource(Protocol):
@@ -20,9 +22,21 @@ class VectorSource(Protocol):
     value: str
 
 
+@dataclass(frozen=True)
+class VectorRecord:
+    """One image ready to be written to Qdrant."""
+
+    image_id: str
+    vector: list[float]
+    source: VectorSource
+    metadata: dict[str, Any]
+
+
 class VectorService:
-    def __init__(self, qdrant_client: Optional[Any] = None) -> None:
-        self.qdrant_client = qdrant_client or get_qdrant_client()
+    """Every Qdrant point read/write goes through this service."""
+
+    def __init__(self, qdrant_client: Any) -> None:
+        self.qdrant_client = qdrant_client
 
     def upsert_image(
         self,
@@ -34,43 +48,88 @@ class VectorService:
         metadata: Optional[dict[str, Any]] = None,
         embedding: EmbeddingModelMetadata,
     ) -> str:
+        point_ids = self.upsert_images(
+            collection_name=collection_name,
+            records=[
+                VectorRecord(
+                    image_id=image_id,
+                    vector=vector,
+                    source=source,
+                    metadata=metadata or {},
+                )
+            ],
+            embedding=embedding,
+        )
+        return point_ids[0]
+
+    def upsert_images(
+        self,
+        *,
+        collection_name: str,
+        records: Sequence[VectorRecord],
+        embedding: EmbeddingModelMetadata,
+    ) -> list[str]:
         from qdrant_client.http import models as qdrant_models
 
-        point_id = self._point_id(collection_name=collection_name, image_id=image_id)
-        payload = {
-            "image_id": image_id,
-            "source_type": source.type,
-            "source_value": source.value,
-            "metadata": metadata or {},
-            "embedding_provider": embedding.provider,
-            "embedding_model": embedding.model_name,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }
-
+        if not records:
+            return []
+        created_at = datetime.now(timezone.utc).isoformat()
+        point_ids = [
+            self._point_id(collection_name=collection_name, image_id=record.image_id)
+            for record in records
+        ]
+        points = [
+            qdrant_models.PointStruct(
+                id=point_id,
+                vector=record.vector,
+                payload=self._build_payload(
+                    record=record,
+                    embedding=embedding,
+                    created_at=created_at,
+                ),
+            )
+            for point_id, record in zip(point_ids, records)
+        ]
         try:
             self.qdrant_client.upsert(
                 collection_name=collection_name,
-                points=[
-                    qdrant_models.PointStruct(
-                        id=point_id,
-                        vector=vector,
-                        payload=payload,
-                    )
-                ],
+                points=points,
                 wait=True,
             )
         except Exception as exc:
             raise ServiceUnavailableError(
-                message="Could not upsert image vector",
+                message="Could not upsert image vectors",
                 code="QDRANT_VECTOR_UPSERT_FAILED",
                 details={
                     "collection_name": collection_name,
-                    "image_id": image_id,
+                    "image_ids": [record.image_id for record in records],
                     "error": str(exc),
                 },
             ) from exc
 
-        return point_id
+        return point_ids
+
+    def _build_payload(
+        self,
+        *,
+        record: VectorRecord,
+        embedding: EmbeddingModelMetadata,
+        created_at: str,
+    ) -> dict[str, Any]:
+        return {
+            "image_id": record.image_id,
+            "source_type": record.source.type,
+            "source_value": record.source.value,
+            "metadata": record.metadata or {},
+            "embedding_provider": embedding.provider,
+            "embedding_model": embedding.model_name,
+            # Revision and dimension are what make two vectors comparable;
+            # without them a model upgrade silently corrupts a collection.
+            "embedding_revision": embedding.model_pretrained,
+            "vector_dimension": embedding.vector_size,
+            "vector_normalized": True,
+            "created_at": created_at,
+        }
 
     def search(
         self,
@@ -81,11 +140,13 @@ class VectorService:
         filters: Optional[dict[str, Any]] = None,
         min_score: Optional[float] = None,
     ) -> list[SearchResult]:
+        query_filter = build_qdrant_filter(filters or {})
+
         try:
             response = self.qdrant_client.query_points(
                 collection_name=collection_name,
                 query=vector,
-                query_filter=self._build_filter(filters or {}),
+                query_filter=query_filter,
                 limit=top_k,
                 with_payload=True,
                 with_vectors=False,
@@ -150,16 +211,53 @@ class VectorService:
             deleted=True,
         )
 
+    def list_images(
+        self,
+        *,
+        collection_name: str,
+        limit: int,
+        cursor: Optional[str] = None,
+    ) -> ImageListResponse:
+        try:
+            points, next_offset = self.qdrant_client.scroll(
+                collection_name=collection_name,
+                limit=limit,
+                offset=cursor,
+                with_payload=True,
+                with_vectors=False,
+            )
+        except Exception as exc:
+            raise ServiceUnavailableError(
+                message="Could not list image vectors",
+                code="QDRANT_IMAGE_LIST_FAILED",
+                details={"collection_name": collection_name, "error": str(exc)},
+            ) from exc
+
+        return ImageListResponse(
+            collection_name=collection_name,
+            images=[
+                self._image_record_from_point(
+                    collection_name=collection_name,
+                    image_id=str(point.id),
+                    point=point,
+                )
+                for point in points
+            ],
+            next_cursor=str(next_offset) if next_offset is not None else None,
+        )
+
     def count_images(
         self,
         *,
         collection_name: str,
         filters: Optional[dict[str, Any]] = None,
     ) -> int:
+        count_filter = build_qdrant_filter(filters or {})
+
         try:
             result = self.qdrant_client.count(
                 collection_name=collection_name,
-                count_filter=self._build_filter(filters or {}),
+                count_filter=count_filter,
                 exact=True,
             )
         except Exception as exc:
@@ -170,29 +268,6 @@ class VectorService:
             ) from exc
 
         return int(getattr(result, "count", result))
-
-    def _build_filter(
-        self,
-        filters: dict[str, Any],
-    ) -> Optional["qdrant_models.Filter"]:
-        from qdrant_client.http import models as qdrant_models
-
-        if not filters:
-            return None
-
-        conditions = [
-            qdrant_models.FieldCondition(
-                key=f"metadata.{key}",
-                match=qdrant_models.MatchValue(value=value),
-            )
-            for key, value in filters.items()
-            if isinstance(value, (bool, int, str))
-        ]
-
-        if not conditions:
-            return None
-
-        return qdrant_models.Filter(must=conditions)
 
     def _search_result_from_point(self, point: Any) -> SearchResult:
         payload = point.payload or {}
@@ -259,9 +334,7 @@ class VectorService:
             metadata=payload.get("metadata") or {},
             embedding_provider=payload.get("embedding_provider"),
             embedding_model=payload.get("embedding_model"),
+            embedding_revision=payload.get("embedding_revision"),
+            vector_dimension=payload.get("vector_dimension"),
             created_at=payload.get("created_at"),
         )
-
-
-def get_vector_service() -> VectorService:
-    return VectorService()

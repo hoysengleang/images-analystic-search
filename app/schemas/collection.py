@@ -3,6 +3,11 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.core.constants import (
+    SUPPORTED_DISTANCE_METRICS,
+    SUPPORTED_IMAGE_FRAMINGS,
+)
+
 
 class CollectionModelConfig(BaseModel):
     provider: str = Field(..., min_length=1, examples=["openclip"])
@@ -10,8 +15,31 @@ class CollectionModelConfig(BaseModel):
     pretrained: str = Field(..., min_length=1, examples=["laion2b_s34b_b79k"])
     vector_size: int = Field(..., ge=1, examples=[512])
     distance: str = Field(default="cosine", min_length=1, examples=["cosine"])
+    framing: str = Field(
+        default="pad",
+        examples=["pad"],
+        description=(
+            "How a non-square image is fitted to the model input. Pinned per "
+            "collection: vectors framed differently are not comparable."
+        ),
+    )
+    views: int = Field(
+        default=1,
+        ge=1,
+        le=3,
+        description="Views averaged per image. Also pinned per collection.",
+    )
 
-    @field_validator("provider", "distance", mode="before")
+    @field_validator("framing")
+    @classmethod
+    def validate_framing(cls, value: str) -> str:
+        if value not in SUPPORTED_IMAGE_FRAMINGS:
+            raise ValueError(
+                f"framing must be one of: {', '.join(sorted(SUPPORTED_IMAGE_FRAMINGS))}"
+            )
+        return value
+
+    @field_validator("provider", "distance", "framing", mode="before")
     @classmethod
     def normalize_lowercase_fields(cls, value: object) -> object:
         if isinstance(value, str):
@@ -28,10 +56,10 @@ class CollectionModelConfig(BaseModel):
     @field_validator("distance")
     @classmethod
     def validate_distance(cls, value: str) -> str:
-        allowed_distances = {"cosine", "dot", "euclid", "manhattan"}
-        if value not in allowed_distances:
+        if value not in SUPPORTED_DISTANCE_METRICS:
             raise ValueError(
-                "distance must be one of: cosine, dot, euclid, manhattan"
+                "distance must be one of: "
+                f"{', '.join(sorted(SUPPORTED_DISTANCE_METRICS))}"
             )
         return value
 
@@ -67,3 +95,7 @@ class CollectionStatsResponse(BaseModel):
     model: CollectionModelConfig
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class CollectionsListResponse(BaseModel):
+    collections: list[CollectionResponse] = Field(default_factory=list)

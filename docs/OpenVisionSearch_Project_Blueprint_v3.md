@@ -1,5 +1,10 @@
 # OpenVisionSearch Project Blueprint v3
 
+> **Legacy reference.** This document describes the earlier image-similarity
+> product. New work follows
+> [`VISUAL_PRODUCT_SEARCH_SPEC.md`](VISUAL_PRODUCT_SEARCH_SPEC.md); consult the
+> [roadmap](roadmap.md) for the transition status.
+
 **Project type:** Free open-source developer tool  
 **Main stack:** FastAPI + OpenCLIP + Qdrant  
 **Main promise:** Developers can self-host a visual search API, index their own images from many sources, and search similar images through HTTP endpoints.

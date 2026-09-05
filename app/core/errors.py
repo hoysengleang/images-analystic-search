@@ -48,6 +48,18 @@ class UnsupportedImageTypeError(BadRequestError):
     message = "Unsupported image type"
 
 
+class UnauthorizedError(OpenVisionSearchError):
+    status_code = status.HTTP_401_UNAUTHORIZED
+    code = "UNAUTHORIZED"
+    message = "Missing or invalid API key"
+
+
+class RequestTooLargeError(OpenVisionSearchError):
+    status_code = 413
+    code = "REQUEST_BODY_TOO_LARGE"
+    message = "Request body is too large"
+
+
 class ResourceNotFoundError(OpenVisionSearchError):
     status_code = status.HTTP_404_NOT_FOUND
     code = "NOT_FOUND"
@@ -137,7 +149,7 @@ async def request_validation_error_handler(
     exc: RequestValidationError,
 ) -> JSONResponse:
     return error_response(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         code="VALIDATION_ERROR",
         message="Invalid request",
         details={"errors": exc.errors()},

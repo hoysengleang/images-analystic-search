@@ -1,0 +1,31 @@
+name: Feature request
+description: Propose a focused improvement to the product
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user problem should this solve? Describe the use case, not only the implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Explain the smallest useful outcome and show an API example when relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: principles
+    attributes:
+      label: Product boundaries
+      options:
+        - label: This keeps tenant isolation in storage, not only in handlers.
+        - label: This does not require Qdrant or another hosted service in the default path.
+        - label: This returns products rather than exposing image rows as the product model.
